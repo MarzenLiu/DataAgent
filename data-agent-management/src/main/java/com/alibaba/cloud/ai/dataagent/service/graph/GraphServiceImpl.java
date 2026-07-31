@@ -165,7 +165,7 @@ public class GraphServiceImpl implements GraphService {
 		String threadId = graphRequest.getThreadId();
 		String conversationId = graphRequest.getConversationId();
 		boolean nl2sqlOnly = graphRequest.isNl2sqlOnly();
-		boolean humanReviewEnabled = graphRequest.isHumanFeedback() & !(nl2sqlOnly);
+		boolean humanReviewEnabled = graphRequest.isHumanFeedback() && !nl2sqlOnly;
 		if (!StringUtils.hasText(threadId) || !StringUtils.hasText(conversationId) || !StringUtils.hasText(agentId)
 				|| !StringUtils.hasText(query)) {
 			throw new IllegalArgumentException("Invalid arguments");
