@@ -18,6 +18,7 @@ package com.alibaba.cloud.ai.dataagent.workflow.node;
 import com.alibaba.cloud.ai.dataagent.dto.planner.ExecutionStep;
 import com.alibaba.cloud.ai.dataagent.dto.planner.Plan;
 import com.alibaba.cloud.ai.dataagent.entity.UserPromptConfig;
+import com.alibaba.cloud.ai.dataagent.entity.UserProfile;
 import com.alibaba.cloud.ai.dataagent.prompt.PromptHelper;
 import com.alibaba.cloud.ai.dataagent.service.llm.LlmService;
 import com.alibaba.cloud.ai.dataagent.service.prompt.UserPromptService;
@@ -98,10 +99,12 @@ public class ReportGeneratorNode implements NodeAction {
 		}
 
 		// Generate report streaming flux
+		UserProfile userProfile = StateUtil.getObjectValue(state, USER_PROFILE, UserProfile.class, (UserProfile) null);
 		Flux<ChatResponse> reportGenerationFlux = generateReport(userInput, plan, executionResults,
-				summaryAndRecommendations, agentId);
+				summaryAndRecommendations, agentId, userProfile);
 
 		TextType reportTextType = TextType.MARK_DOWN;
+		String reportOwnerFields = buildReportOwnerFields(userProfile);
 
 		// Use utility class to create streaming generator with content collection
 		Flux<GraphResponse<StreamingOutput>> generator = FluxUtil.createStreamingGeneratorWithMessages(this.getClass(),
@@ -115,10 +118,17 @@ public class ReportGeneratorNode implements NodeAction {
 					return result;
 				},
 				Flux.concat(Flux.just(ChatResponseUtil.createPureResponse(reportTextType.getStartSign())),
+						Flux.just(ChatResponseUtil.createPureResponse(reportOwnerFields)),
 						reportGenerationFlux,
 						Flux.just(ChatResponseUtil.createPureResponse(reportTextType.getEndSign()))));
 
 		return Map.of(RESULT, generator);
+	}
+
+	private String buildReportOwnerFields(UserProfile profile) {
+		String nickname = profile == null ? "未填写" : profile.getNickname();
+		String position = profile == null ? "未填写" : profile.getPosition();
+		return "**报告生成人**：" + nickname + "\n\n**职位**：" + position + "\n\n";
 	}
 
 	/**
@@ -142,9 +152,9 @@ public class ReportGeneratorNode implements NodeAction {
 	 * Generates the analysis report.
 	 */
 	private Flux<ChatResponse> generateReport(String userInput, Plan plan, HashMap<String, String> executionResults,
-			String summaryAndRecommendations, Long agentId) {
+			String summaryAndRecommendations, Long agentId, UserProfile userProfile) {
 		// Build user requirements and plan description
-		String userRequirementsAndPlan = buildUserRequirementsAndPlan(userInput, plan);
+		String userRequirementsAndPlan = buildUserRequirementsAndPlan(userInput, plan, userProfile);
 
 		// Build analysis steps and data results description
 		String analysisStepsAndData = buildAnalysisStepsAndData(plan, executionResults);
@@ -162,10 +172,14 @@ public class ReportGeneratorNode implements NodeAction {
 	/**
 	 * Builds user requirements and plan description.
 	 */
-	private String buildUserRequirementsAndPlan(String userInput, Plan plan) {
+	private String buildUserRequirementsAndPlan(String userInput, Plan plan, UserProfile userProfile) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("## 用户原始需求\n");
 		sb.append(userInput).append("\n\n");
+		if (userProfile != null && org.springframework.util.StringUtils.hasText(userProfile.getPreferences())) {
+			sb.append("## 用户长期报告偏好\n");
+			sb.append(userProfile.getPreferences()).append("\n\n");
+		}
 
 		sb.append("## 执行计划概述\n");
 		sb.append("**思考过程**: ").append(plan.getThoughtProcess()).append("\n\n");

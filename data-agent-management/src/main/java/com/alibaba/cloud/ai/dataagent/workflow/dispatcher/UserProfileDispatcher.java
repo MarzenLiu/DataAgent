@@ -15,30 +15,20 @@
  */
 package com.alibaba.cloud.ai.dataagent.workflow.dispatcher;
 
+import com.alibaba.cloud.ai.dataagent.util.StateUtil;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.EdgeAction;
 
-import static com.alibaba.cloud.ai.dataagent.constant.Constant.HUMAN_FEEDBACK_NODE;
-import static com.alibaba.cloud.ai.dataagent.constant.Constant.HUMAN_NEXT_NODE;
+import static com.alibaba.cloud.ai.dataagent.constant.Constant.INTENT_RECOGNITION_NODE;
+import static com.alibaba.cloud.ai.dataagent.constant.Constant.USER_PROFILE_STATUS;
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
 
-/**
- * Dispatcher for human feedback node routing.
- *
- * @author Makoto
- */
-public class HumanFeedbackDispatcher implements EdgeAction {
+public class UserProfileDispatcher implements EdgeAction {
 
 	@Override
-	public String apply(OverAllState state) throws Exception {
-		String nextNode = (String) state.value(HUMAN_NEXT_NODE, END);
-
-		// 如果是等待反馈状态，返回END让图暂停
-		if ("WAIT_FOR_FEEDBACK".equals(nextNode)) {
-			return HUMAN_FEEDBACK_NODE;
-		}
-
-		return nextNode;
+	public String apply(OverAllState state) {
+		return "complete".equals(StateUtil.getStringValue(state, USER_PROFILE_STATUS))
+				? INTENT_RECOGNITION_NODE : END;
 	}
 
 }

@@ -30,9 +30,23 @@ public final class Constant {
 
 	public static final String AGENT_ID = "agentId";
 
+	public static final String CONVERSATION_ID = "conversationId";
+
+	public static final String USER_PROFILE = "USER_PROFILE";
+
+	public static final String USER_PROFILE_STATUS = "USER_PROFILE_STATUS";
+
 	public static final String DATASOURCE_ID = "datasourceId";
 
 	public static final String MULTI_TURN_CONTEXT = "MULTI_TURN_CONTEXT";
+
+	public static final String MULTI_AGENT_NEXT = "MULTI_AGENT_NEXT";
+
+	public static final String MULTI_AGENT_PLANNING_MODE = "MULTI_AGENT_PLANNING_MODE";
+
+	public static final String SUPERVISOR_NEXT = "supervisor_next";
+
+	public static final String HUMAN_NEXT_NODE = "human_next_node";
 
 	public static final String RESULT = "result";
 
@@ -99,6 +113,8 @@ public final class Constant {
 	public static final String PLAN_EXECUTOR_NODE = "PLAN_EXECUTOR_NODE";
 
 	public static final String INTENT_RECOGNITION_NODE = "INTENT_RECOGNITION_NODE";
+
+	public static final String USER_PROFILE_NODE = "USER_PROFILE_NODE";
 
 	public static final String EVIDENCE_RECALL_NODE = "EVIDENCE_RECALL_NODE";
 

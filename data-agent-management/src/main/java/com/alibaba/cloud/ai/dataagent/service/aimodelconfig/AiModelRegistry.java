@@ -36,6 +36,8 @@ public class AiModelRegistry {
 	// 缓存对象 (volatile 保证可见性)
 	private volatile ChatClient currentChatClient;
 
+	private volatile ChatModel currentChatModel;
+
 	private volatile EmbeddingModel currentEmbeddingModel;
 
 	// =========================================================
@@ -46,26 +48,36 @@ public class AiModelRegistry {
 			synchronized (this) {
 				if (currentChatClient == null) {
 					log.info("Initializing global ChatClient...");
+					currentChatClient = ChatClient.builder(getChatModel()).build();
+				}
+			}
+		}
+		return currentChatClient;
+	}
+
+	public ChatModel getChatModel() {
+		if (currentChatModel == null) {
+			synchronized (this) {
+				if (currentChatModel == null) {
+					log.info("Initializing global ChatModel...");
 					try {
 						ModelConfigDTO config = modelConfigDataService.getActiveConfigByType(ModelType.CHAT);
 						if (config != null) {
-							ChatModel chatModel = modelFactory.createChatModel(config);
-							// 核心：基于新 Model 创建新 Client，彻底消除旧参数缓存
-							currentChatClient = ChatClient.builder(chatModel).build();
+							currentChatModel = modelFactory.createChatModel(config);
 						}
 					}
 					catch (Exception e) {
 						throw new IllegalStateException("Failed to initialize the active CHAT model", e);
 					}
 
-					if (currentChatClient == null) {
+					if (currentChatModel == null) {
 						throw new IllegalStateException(
 								"No active CHAT model configured. Please configure it in the dashboard.");
 					}
 				}
 			}
 		}
-		return currentChatClient;
+		return currentChatModel;
 	}
 
 	// =========================================================
@@ -102,6 +114,7 @@ public class AiModelRegistry {
 
 	public void refreshChat() {
 		this.currentChatClient = null;
+		this.currentChatModel = null;
 		log.info("Chat cache cleared.");
 	}
 

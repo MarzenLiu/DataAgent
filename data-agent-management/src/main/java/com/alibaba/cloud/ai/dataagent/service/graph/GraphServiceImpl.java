@@ -18,6 +18,7 @@ package com.alibaba.cloud.ai.dataagent.service.graph;
 import com.alibaba.cloud.ai.dataagent.service.langfuse.LangfuseService;
 import com.alibaba.cloud.ai.dataagent.enums.GraphEventType;
 import com.alibaba.cloud.ai.dataagent.enums.TextType;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.DataAnalysisSupervisorAgent;
 import com.alibaba.cloud.ai.dataagent.workflow.node.PlannerNode;
 import com.alibaba.cloud.ai.dataagent.dto.GraphRequest;
 import com.alibaba.cloud.ai.dataagent.service.graph.Context.MultiTurnContextManager;
@@ -30,6 +31,8 @@ import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -38,6 +41,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -77,7 +81,8 @@ public class GraphServiceImpl implements GraphService {
 		RunnableConfig config = RunnableConfig.builder().threadId(UUID.randomUUID().toString()).build();
 		try {
 			OverAllState state = compiledGraph
-				.invoke(Map.of(IS_ONLY_NL2SQL, true, INPUT_KEY, naturalQuery, AGENT_ID, agentId), config)
+				.invoke(Map.of(IS_ONLY_NL2SQL, true, INPUT_KEY, naturalQuery, AGENT_ID, agentId, "messages",
+						initialSupervisorMessages(naturalQuery)), config)
 				.orElseThrow();
 			return state.value(SQL_GENERATE_OUTPUT, "");
 		}
@@ -181,8 +186,9 @@ public class GraphServiceImpl implements GraphService {
 		String multiTurnContext = multiTurnContextManager.buildContext(conversationId);
 		multiTurnContextManager.beginTurn(conversationId, query);
 		Flux<NodeOutput> nodeOutputFlux = compiledGraph.stream(
-				Map.of(IS_ONLY_NL2SQL, nl2sqlOnly, INPUT_KEY, query, AGENT_ID, agentId, HUMAN_REVIEW_ENABLED,
-						humanReviewEnabled, MULTI_TURN_CONTEXT, multiTurnContext, TRACE_THREAD_ID, threadId),
+				Map.of(IS_ONLY_NL2SQL, nl2sqlOnly, INPUT_KEY, query, AGENT_ID, agentId, CONVERSATION_ID, conversationId,
+						HUMAN_REVIEW_ENABLED, humanReviewEnabled, MULTI_TURN_CONTEXT, multiTurnContext, TRACE_THREAD_ID,
+						threadId, "messages", initialSupervisorMessages(query)),
 				RunnableConfig.builder().threadId(threadId).build());
 		subscribeToFlux(context, nodeOutputFlux, graphRequest, agentId, threadId);
 	}
@@ -363,6 +369,9 @@ public class GraphServiceImpl implements GraphService {
 	}
 
 	private void handleStreamNodeOutput(GraphRequest request, StreamingOutput output) {
+		if (DataAnalysisSupervisorAgent.ROUTER_AGENT_NAME.equals(output.agent())) {
+			return;
+		}
 		String threadId = request.getThreadId();
 		StreamContext context = streamContextMap.get(threadId);
 		// 检查是否已经停止处理
@@ -421,6 +430,11 @@ public class GraphServiceImpl implements GraphService {
 				stopStreamProcessing(threadId);
 			}
 		}
+	}
+
+	private List<Message> initialSupervisorMessages(String query) {
+		return List.of(new UserMessage(query),
+				new UserMessage(DataAnalysisSupervisorAgent.initialHandoffMessage()));
 	}
 
 	private boolean isAwaitingHumanFeedback(GraphRequest request, RunnableConfig config) {

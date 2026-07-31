@@ -17,17 +17,24 @@ package com.alibaba.cloud.ai.dataagent.service.llm.impls;
 
 import com.alibaba.cloud.ai.dataagent.service.aimodelconfig.AiModelRegistry;
 import com.alibaba.cloud.ai.dataagent.service.llm.LlmService;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.advisor.StructuredOutputValidationAdvisor;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.web.client.RestClientException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-@AllArgsConstructor
+import java.util.concurrent.atomic.AtomicBoolean;
+
+@RequiredArgsConstructor
+@Slf4j
 public class StreamLlmService implements LlmService {
 
 	private final AiModelRegistry registry;
+
+	private final AtomicBoolean structuredSyncCompatible = new AtomicBoolean(true);
 
 	@Override
 	public Flux<ChatResponse> call(String system, String user) {
@@ -36,6 +43,9 @@ public class StreamLlmService implements LlmService {
 
 	@Override
 	public Flux<ChatResponse> call(String system, String user, Class<?> outputType) {
+		if (!structuredSyncCompatible.get()) {
+			return call(system, user);
+		}
 		StructuredOutputValidationAdvisor advisor = StructuredOutputValidationAdvisor.builder()
 			.outputType(outputType)
 			.maxRepeatAttempts(2)
@@ -49,7 +59,15 @@ public class StreamLlmService implements LlmService {
 				.call()
 				.chatResponse())
 			.subscribeOn(Schedulers.boundedElastic())
-			.flux();
+			.flux()
+			.onErrorResume(RestClientException.class, ex -> {
+				structuredSyncCompatible.set(false);
+				log.warn(
+						"Structured synchronous response is incompatible with the current model endpoint; "
+								+ "using streaming output for this and subsequent structured calls: {}",
+						summarizeExceptionChain(ex));
+				return call(system, user);
+			});
 	}
 
 	@Override
@@ -64,6 +82,9 @@ public class StreamLlmService implements LlmService {
 
 	@Override
 	public Flux<ChatResponse> callUser(String user, Class<?> outputType) {
+		if (!structuredSyncCompatible.get()) {
+			return callUser(user);
+		}
 		StructuredOutputValidationAdvisor advisor = StructuredOutputValidationAdvisor.builder()
 			.outputType(outputType)
 			.maxRepeatAttempts(2)
@@ -71,7 +92,28 @@ public class StreamLlmService implements LlmService {
 		return Mono
 			.fromCallable(() -> registry.getChatClient().prompt().user(user).advisors(advisor).call().chatResponse())
 			.subscribeOn(Schedulers.boundedElastic())
-			.flux();
+			.flux()
+			.onErrorResume(RestClientException.class, ex -> {
+				structuredSyncCompatible.set(false);
+				log.warn(
+						"Structured synchronous response is incompatible with the current model endpoint; "
+								+ "using streaming output for this and subsequent structured calls: {}",
+						summarizeExceptionChain(ex));
+				return callUser(user);
+			});
+	}
+
+	private String summarizeExceptionChain(Throwable error) {
+		StringBuilder summary = new StringBuilder();
+		Throwable current = error;
+		while (current != null) {
+			if (!summary.isEmpty()) {
+				summary.append(" -> ");
+			}
+			summary.append(current.getClass().getSimpleName()).append(": ").append(current.getMessage());
+			current = current.getCause();
+		}
+		return summary.toString();
 	}
 
 }

@@ -29,12 +29,14 @@ import org.mockito.quality.Strictness;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.web.client.RestClientException;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -128,6 +130,40 @@ class StreamLlmServiceTest {
 		verify(requestSpec).user("user");
 		verify(requestSpec).advisors(any(Advisor[].class));
 		verify(requestSpec).call();
+	}
+
+	@Test
+	void callUser_structuredOutputIncompatibleResponse_fallsBackToStreaming() {
+		when(callResponseSpec.chatResponse()).thenThrow(new RestClientException("incompatible response"));
+
+		Flux<ChatResponse> firstResult = streamLlmService.callUser("Hello", FeasibilityAssessmentOutputDTO.class);
+
+		StepVerifier.create(firstResult)
+			.expectNextMatches(r -> ChatResponseUtil.getText(r).equals("streamed output"))
+			.verifyComplete();
+
+		Flux<ChatResponse> secondResult = streamLlmService.callUser("Hello again",
+				FeasibilityAssessmentOutputDTO.class);
+		StepVerifier.create(secondResult)
+			.expectNextMatches(r -> ChatResponseUtil.getText(r).equals("streamed output"))
+			.verifyComplete();
+
+		verify(requestSpec).call();
+		verify(requestSpec, times(2)).stream();
+	}
+
+	@Test
+	void call_structuredOutputIncompatibleResponse_fallsBackToStreamingWithRoles() {
+		when(callResponseSpec.chatResponse()).thenThrow(new RestClientException("incompatible response"));
+
+		Flux<ChatResponse> result = streamLlmService.call("system", "user", FeasibilityAssessmentOutputDTO.class);
+
+		StepVerifier.create(result)
+			.expectNextMatches(r -> ChatResponseUtil.getText(r).equals("streamed output"))
+			.verifyComplete();
+		verify(requestSpec, times(2)).system("system");
+		verify(requestSpec, times(2)).user("user");
+		verify(requestSpec).stream();
 	}
 
 }

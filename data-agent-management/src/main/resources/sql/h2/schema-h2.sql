@@ -190,6 +190,21 @@ CREATE TABLE IF NOT EXISTS chat_session (
 ) ENGINE = InnoDB COMMENT = '聊天会话表';
 
 -- 消息表
+CREATE TABLE IF NOT EXISTS user_profile (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  memory_key VARCHAR(128) NOT NULL,
+  user_id BIGINT DEFAULT NULL,
+  conversation_id VARCHAR(36) DEFAULT NULL,
+  nickname VARCHAR(100) NOT NULL,
+  position VARCHAR(150) NOT NULL,
+  preferences TEXT NOT NULL,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE (memory_key)
+);
+
+-- 消息表
 CREATE TABLE IF NOT EXISTS chat_message (
   id BIGINT NOT NULL AUTO_INCREMENT,
   session_id VARCHAR(36) NOT NULL COMMENT '会话ID',

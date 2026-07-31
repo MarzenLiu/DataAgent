@@ -44,13 +44,13 @@ public class HumanFeedbackNode implements NodeAction {
 		int repairCount = StateUtil.getObjectValue(state, PLAN_REPAIR_COUNT, Integer.class, 0);
 		if (repairCount >= 3) {
 			log.warn("Max repair attempts (3) exceeded, ending process");
-			updated.put("human_next_node", "END");
+			updated.put(HUMAN_NEXT_NODE, "END");
 			return updated;
 		}
 
 		Map<String, Object> feedbackData = StateUtil.getObjectValue(state, HUMAN_FEEDBACK_DATA, Map.class, Map.of());
 		if (feedbackData.isEmpty()) {
-			updated.put("human_next_node", "WAIT_FOR_FEEDBACK");
+			updated.put(HUMAN_NEXT_NODE, "WAIT_FOR_FEEDBACK");
 			return updated;
 		}
 
@@ -61,12 +61,12 @@ public class HumanFeedbackNode implements NodeAction {
 
 		if (approved) {
 			log.info("Plan approved → execution");
-			updated.put("human_next_node", PLAN_EXECUTOR_NODE);
+			updated.put(HUMAN_NEXT_NODE, PLAN_EXECUTOR_NODE);
 			updated.put(HUMAN_REVIEW_ENABLED, false);
 		}
 		else {
 			log.info("Plan rejected → regeneration (attempt {})", repairCount + 1);
-			updated.put("human_next_node", PLANNER_NODE);
+			updated.put(HUMAN_NEXT_NODE, PLANNER_NODE);
 			updated.put(PLAN_REPAIR_COUNT, repairCount + 1);
 			updated.put(PLAN_CURRENT_STEP, 1);
 			updated.put(HUMAN_REVIEW_ENABLED, true);
