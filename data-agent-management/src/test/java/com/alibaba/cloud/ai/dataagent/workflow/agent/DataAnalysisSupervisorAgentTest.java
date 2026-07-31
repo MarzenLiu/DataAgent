@@ -106,6 +106,32 @@ class DataAnalysisSupervisorAgentTest {
 		assertFalse(graph.contains(USER_PROFILE_NODE));
 	}
 
+	@Test
+	void supervisorPreservesBusinessStateAcrossCapabilityAgents() throws Exception {
+		KeyStrategyFactory keyStrategyFactory = keyStrategyFactory();
+		AtomicInteger modelCalls = new AtomicInteger();
+		ChatModel model = prompt -> ChatResponseUtil.createPureResponse(modelCalls.getAndIncrement() == 0
+				? "[\"" + REQUEST_UNDERSTANDING_AGENT + "\"]" : modelCalls.get() == 2
+						? "[\"" + DATA_PREPARATION_AGENT + "\"]" : "[\"FINISH\"]");
+		Agent producer = capabilityAgent(REQUEST_UNDERSTANDING_AGENT, keyStrategyFactory, node_async(state -> Map.of(
+				"business_state", "preserved",
+				MULTI_AGENT_NEXT, DATA_PREPARATION_AGENT,
+				"messages", new UserMessage(handoffMessage(DATA_PREPARATION_AGENT)))));
+		Agent consumer = capabilityAgent(DATA_PREPARATION_AGENT, keyStrategyFactory, node_async(state -> Map.of(
+				"consumer_result", state.value("business_state", "missing"),
+				MULTI_AGENT_NEXT, FINISH,
+				"messages", new UserMessage(handoffMessage(FINISH)))));
+		DataAnalysisSupervisorAgent supervisor = new DataAnalysisSupervisorAgent(
+				ReactAgent.builder().name(ROUTER_AGENT_NAME).model(model).build(),
+				List.of(producer, consumer), keyStrategyFactory);
+
+		OverAllState state = supervisor.invoke(Map.of("messages",
+				List.of(new UserMessage(initialHandoffMessage())))).orElseThrow();
+
+		assertEquals("preserved", state.value("consumer_result").orElseThrow());
+		assertEquals(3, modelCalls.get());
+	}
+
 	private List<Agent> capabilityAgents(KeyStrategyFactory keyStrategyFactory) {
 		return List.of(
 				capabilityAgent(REQUEST_UNDERSTANDING_AGENT, keyStrategyFactory, true),
@@ -133,6 +159,15 @@ class DataAnalysisSupervisorAgentTest {
 		});
 	}
 
+	private Agent capabilityAgent(String name, KeyStrategyFactory keyStrategyFactory,
+			com.alibaba.cloud.ai.graph.action.AsyncNodeAction action) {
+		return new WorkflowCapabilityAgent(name, name,
+				() -> new StateGraph(name + "_graph", keyStrategyFactory)
+					.addNode(name + "_action", action)
+					.addEdge(START, name + "_action")
+					.addEdge(name + "_action", END));
+	}
+
 	private KeyStrategyFactory keyStrategyFactory() {
 		return () -> {
 			Map<String, KeyStrategy> strategies = new HashMap<>();
@@ -141,6 +176,8 @@ class DataAnalysisSupervisorAgentTest {
 			strategies.put(MULTI_AGENT_NEXT, KeyStrategy.REPLACE);
 			strategies.put(SUPERVISOR_NEXT, KeyStrategy.REPLACE);
 			strategies.put("request_agent_result", KeyStrategy.REPLACE);
+			strategies.put("business_state", KeyStrategy.REPLACE);
+			strategies.put("consumer_result", KeyStrategy.REPLACE);
 			return strategies;
 		};
 	}

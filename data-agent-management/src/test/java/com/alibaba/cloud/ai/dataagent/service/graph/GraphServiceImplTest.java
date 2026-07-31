@@ -323,6 +323,26 @@ class GraphServiceImplTest {
 				responses.toString());
 	}
 
+	@Test
+	void graphStreamProcess_doesNotExposeSupervisorRoutingOutput() throws Exception {
+		OverAllState state = new OverAllState();
+		StreamingOutput<?> routerOutput = streamingOutput("_AGENT_MODEL_",
+				"[\"request_understanding_agent\"]", state);
+		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.just(routerOutput));
+
+		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().unicast().onBackpressureBuffer();
+		var responsesFuture = sink.asFlux().map(ServerSentEvent::data).collectList().toFuture();
+		GraphRequest request = GraphRequest.builder().agentId("1").query("test query").build();
+
+		graphService.graphStreamProcess(sink, request);
+		List<GraphNodeResponse> responses = responsesFuture.get(Duration.ofSeconds(2).toMillis(),
+				TimeUnit.MILLISECONDS);
+
+		assertFalse(responses.stream()
+			.anyMatch(response -> "[\"request_understanding_agent\"]".equals(response.getText())),
+				responses.toString());
+	}
+
 	@SuppressWarnings("unchecked")
 	private StreamingOutput<?> streamingOutput(String node, String chunk, OverAllState state) {
 		StreamingOutput<Object> output = mock(StreamingOutput.class);

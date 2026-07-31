@@ -369,7 +369,8 @@ public class GraphServiceImpl implements GraphService {
 	}
 
 	private void handleStreamNodeOutput(GraphRequest request, StreamingOutput output) {
-		if (DataAnalysisSupervisorAgent.ROUTER_AGENT_NAME.equals(output.agent())) {
+		if (DataAnalysisSupervisorAgent.ROUTER_AGENT_NAME.equals(output.agent())
+				|| DataAnalysisSupervisorAgent.ROUTER_MODEL_NODE_NAME.equals(output.node())) {
 			return;
 		}
 		String threadId = request.getThreadId();

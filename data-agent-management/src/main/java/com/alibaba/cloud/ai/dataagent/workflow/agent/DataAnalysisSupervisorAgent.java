@@ -35,6 +35,8 @@ public final class DataAnalysisSupervisorAgent extends SupervisorAgent {
 
 	public static final String ROUTER_AGENT_NAME = "data_analysis_supervisor_router";
 
+	public static final String ROUTER_MODEL_NODE_NAME = "_AGENT_MODEL_";
+
 	public static final String REQUEST_UNDERSTANDING_AGENT = "request_understanding_agent";
 
 	public static final String DATA_PREPARATION_AGENT = "data_preparation_agent";
