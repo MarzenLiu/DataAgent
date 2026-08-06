@@ -54,7 +54,8 @@ public class AiSimulationCodeExecutorService implements CodePoolExecutorService 
 				%s
 				```
 				""", request.code(), request.input());
-		String output = llmService.toStringFlux(llmService.call(SYSTEM_PROMPT, userPrompt))
+		String output = llmService.toStringFlux(
+				llmService.callObserved("simulation-code.generate", SYSTEM_PROMPT, userPrompt))
 			.collect(StringBuilder::new, StringBuilder::append)
 			.map(StringBuilder::toString)
 			.block();

@@ -30,6 +30,15 @@ public interface AgentDatasourceTablesMapper {
 	@Select("select table_name from agent_datasource_tables where agent_datasource_id = #{agentDatasourceId}")
 	List<String> getAgentDatasourceTables(@Param("agentDatasourceId") int agentDatasourceId);
 
+	@Select("""
+			SELECT adt.table_name
+			FROM agent_datasource_tables adt
+			JOIN agent_datasource ad ON ad.id = adt.agent_datasource_id
+			WHERE ad.agent_id = #{agentId} AND ad.is_active = 1
+			ORDER BY adt.table_name
+			""")
+	List<String> getActiveAgentTables(@Param("agentId") long agentId);
+
 	/**
 	 * Get the union of tables selected by every agent that shares a datasource.
 	 */

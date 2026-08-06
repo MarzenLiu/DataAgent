@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.workflow.agent;
+package com.alibaba.cloud.ai.dataagent.workflow.agent.capability;
 
 import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.agent.BaseAgent;
@@ -23,16 +23,21 @@ import com.alibaba.cloud.ai.graph.internal.node.SubCompiledGraphNode;
 
 import java.util.Objects;
 
-/**
- * A business-capability agent backed by a graph of one or more existing workflow nodes.
- */
-public final class WorkflowCapabilityAgent extends BaseAgent {
+public class WorkflowCapabilityAgent extends BaseAgent implements AgentDescriptor {
+
+	private final AgentBasicInfo basicInfo;
 
 	private final GraphFactory graphFactory;
 
-	public WorkflowCapabilityAgent(String name, String description, GraphFactory graphFactory) {
-		super(name, description, true, true, null, null);
+	public WorkflowCapabilityAgent(AgentBasicInfo basicInfo, GraphFactory graphFactory) {
+		super(basicInfo.name(), basicInfo.description(), true, true, null, null);
+		this.basicInfo = basicInfo;
 		this.graphFactory = Objects.requireNonNull(graphFactory, "graphFactory cannot be null");
+	}
+
+	@Override
+	public AgentBasicInfo basicInfo() {
+		return basicInfo;
 	}
 
 	@Override

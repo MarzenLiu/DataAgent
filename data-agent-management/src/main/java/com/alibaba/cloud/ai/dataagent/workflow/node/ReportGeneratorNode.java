@@ -166,7 +166,7 @@ public class ReportGeneratorNode implements NodeAction {
 		String reportPrompt = PromptHelper.buildReportGeneratorPromptWithOptimization(userRequirementsAndPlan,
 				analysisStepsAndData, summaryAndRecommendations, optimizationConfigs);
 		log.debug("Report Node Prompt: \n {} \n", reportPrompt);
-		return llmService.callUser(reportPrompt);
+		return llmService.callUserObserved("report-generator.compose", reportPrompt);
 	}
 
 	/**

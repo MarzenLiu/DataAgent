@@ -16,11 +16,12 @@
 package com.alibaba.cloud.ai.dataagent.service.llm.impls;
 
 import com.alibaba.cloud.ai.dataagent.service.aimodelconfig.AiModelRegistry;
+import com.alibaba.cloud.ai.dataagent.service.langfuse.LangfuseService;
 import com.alibaba.cloud.ai.dataagent.service.llm.LlmService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.advisor.StructuredOutputValidationAdvisor;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.web.client.RestClientException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -28,29 +29,50 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@RequiredArgsConstructor
 @Slf4j
 public class StreamLlmService implements LlmService {
 
 	private final AiModelRegistry registry;
 
+	private final LangfuseService langfuseService;
+
 	private final AtomicBoolean structuredSyncCompatible = new AtomicBoolean(true);
+
+	public StreamLlmService(AiModelRegistry registry, LangfuseService langfuseService) {
+		this.registry = registry;
+		this.langfuseService = langfuseService;
+	}
+
+	public StreamLlmService(AiModelRegistry registry) {
+		this(registry, null);
+	}
 
 	@Override
 	public Flux<ChatResponse> call(String system, String user) {
-		return registry.getChatClient().prompt().system(system).user(user).stream().chatResponse();
+		return callObserved("llm-system-user", system, user);
+	}
+
+	@Override
+	public Flux<ChatResponse> callObserved(String observationName, String system, String user) {
+		return trace(observationName, formatInput(system, user),
+				registry.getChatClient().prompt().system(system).user(user).stream().chatResponse());
 	}
 
 	@Override
 	public Flux<ChatResponse> call(String system, String user, Class<?> outputType) {
+		return callObserved("llm-system-user-structured", system, user, outputType);
+	}
+
+	@Override
+	public Flux<ChatResponse> callObserved(String observationName, String system, String user, Class<?> outputType) {
 		if (!structuredSyncCompatible.get()) {
-			return call(system, user);
+			return callObserved(observationName, system, user);
 		}
 		StructuredOutputValidationAdvisor advisor = StructuredOutputValidationAdvisor.builder()
 			.outputType(outputType)
 			.maxRepeatAttempts(2)
 			.build();
-		return Mono
+		Flux<ChatResponse> response = Mono
 			.fromCallable(() -> registry.getChatClient()
 				.prompt()
 				.system(system)
@@ -66,30 +88,58 @@ public class StreamLlmService implements LlmService {
 						"Structured synchronous response is incompatible with the current model endpoint; "
 								+ "using streaming output for this and subsequent structured calls: {}",
 						summarizeExceptionChain(ex));
-				return call(system, user);
+				return callObserved(observationName, system, user);
 			});
+		return trace(observationName, formatInput(system, user), response);
 	}
 
 	@Override
 	public Flux<ChatResponse> callSystem(String system) {
-		return registry.getChatClient().prompt().system(system).stream().chatResponse();
+		return callSystemObserved("llm-system", system);
+	}
+
+	@Override
+	public Flux<ChatResponse> callSystemObserved(String observationName, String system) {
+		return trace(observationName, "system:\n" + system,
+				registry.getChatClient().prompt().system(system).stream().chatResponse());
 	}
 
 	@Override
 	public Flux<ChatResponse> callUser(String user) {
-		return registry.getChatClient().prompt().user(user).stream().chatResponse();
+		return callUserObserved("llm-user", user);
+	}
+
+	@Override
+	public Flux<ChatResponse> callUserObserved(String observationName, String user) {
+		return trace(observationName, "user:\n" + user,
+				registry.getChatClient().prompt().user(user).stream().chatResponse());
+	}
+
+	@Override
+	public Flux<ChatResponse> callUserObservedWithMaxTokens(String observationName, String user, Integer maxTokens) {
+		if (maxTokens == null || maxTokens <= 0) {
+			return callUserObserved(observationName, user);
+		}
+		OpenAiChatOptions options = OpenAiChatOptions.builder().maxTokens(maxTokens).build();
+		return trace(observationName, "user:\n" + user,
+				registry.getChatClient().prompt().user(user).options(options).stream().chatResponse(), maxTokens);
 	}
 
 	@Override
 	public Flux<ChatResponse> callUser(String user, Class<?> outputType) {
+		return callUserObserved("llm-user-structured", user, outputType);
+	}
+
+	@Override
+	public Flux<ChatResponse> callUserObserved(String observationName, String user, Class<?> outputType) {
 		if (!structuredSyncCompatible.get()) {
-			return callUser(user);
+			return callUserObserved(observationName, user);
 		}
 		StructuredOutputValidationAdvisor advisor = StructuredOutputValidationAdvisor.builder()
 			.outputType(outputType)
 			.maxRepeatAttempts(2)
 			.build();
-		return Mono
+		Flux<ChatResponse> response = Mono
 			.fromCallable(() -> registry.getChatClient().prompt().user(user).advisors(advisor).call().chatResponse())
 			.subscribeOn(Schedulers.boundedElastic())
 			.flux()
@@ -99,8 +149,26 @@ public class StreamLlmService implements LlmService {
 						"Structured synchronous response is incompatible with the current model endpoint; "
 								+ "using streaming output for this and subsequent structured calls: {}",
 						summarizeExceptionChain(ex));
-				return callUser(user);
+				return callUserObserved(observationName, user);
 			});
+		return trace(observationName, "user:\n" + user, response);
+	}
+
+	private Flux<ChatResponse> trace(String name, String input, Flux<ChatResponse> response) {
+		return trace(name, input, response, defaultMaxTokens());
+	}
+
+	private Flux<ChatResponse> trace(String name, String input, Flux<ChatResponse> response, Integer maxTokens) {
+		return langfuseService == null ? response : langfuseService.traceModelStream(name, input, response, maxTokens);
+	}
+
+	private Integer defaultMaxTokens() {
+		var defaultOptions = registry.getChatModel().getDefaultOptions();
+		return defaultOptions == null ? null : defaultOptions.getMaxTokens();
+	}
+
+	private String formatInput(String system, String user) {
+		return "system:\n" + system + "\n\nuser:\n" + user;
 	}
 
 	private String summarizeExceptionChain(Throwable error) {

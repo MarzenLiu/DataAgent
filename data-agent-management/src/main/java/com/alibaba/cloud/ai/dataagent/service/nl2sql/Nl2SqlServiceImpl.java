@@ -53,7 +53,8 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
 	public Flux<ChatResponse> performSemanticConsistency(SemanticConsistencyDTO semanticConsistencyDTO) {
 		String semanticConsistencyPrompt = PromptHelper.buildSemanticConsistenPrompt(semanticConsistencyDTO);
 		log.debug("semanticConsistencyPrompt as follows \n {} \n", semanticConsistencyPrompt);
-		return llmService.callUser(semanticConsistencyPrompt, SemanticConsistencyOutputDTO.class);
+		return llmService.callUserObserved("semantic-consistency.validate", semanticConsistencyPrompt,
+				SemanticConsistencyOutputDTO.class);
 	}
 
 	@Override
@@ -68,7 +69,8 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
 			log.debug("Using SQL error fixer for existing SQL: {}", sql);
 			String errorFixerPrompt = PromptHelper.buildSqlErrorFixerPrompt(sqlGenerationDTO);
 			log.debug("SQL error fixer prompt as follows \n {} \n", errorFixerPrompt);
-			newSqlFlux = llmService.toStringFlux(llmService.callUser(errorFixerPrompt));
+			newSqlFlux = llmService
+				.toStringFlux(llmService.callUserObserved("sql-generation.repair", errorFixerPrompt));
 			log.info("SQL error fixing completed");
 		}
 		else {
@@ -76,7 +78,7 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
 			log.debug("Generating new SQL from scratch");
 			String prompt = PromptHelper.buildNewSqlGeneratorPrompt(sqlGenerationDTO);
 			log.debug("New SQL generator prompt as follows \n {} \n", prompt);
-			newSqlFlux = llmService.toStringFlux(llmService.callSystem(prompt));
+			newSqlFlux = llmService.toStringFlux(llmService.callSystemObserved("sql-generation.create", prompt));
 			log.info("New SQL generation completed");
 		}
 
@@ -91,7 +93,7 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
 				+ " \n 请按照建议进行返回相关表的名称，只返回建议中提到的表名，返回格式为：[\"a\",\"b\",\"c\"] \n " + schemaInfo;
 		log.debug("Built table selection with advice prompt as follows \n {} \n", prompt);
 		StringBuilder sb = new StringBuilder();
-		return llmService.callUser(prompt).doOnNext(r -> {
+		return llmService.callUserObserved("schema-selection.apply-advice", prompt).doOnNext(r -> {
 			String text = r.getResult().getOutput().getText();
 			sb.append(text);
 		}).doOnComplete(() -> {
@@ -131,7 +133,8 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
 
 		Set<String> selectedTables = new HashSet<>();
 
-		return FluxUtil.<ChatResponse, String>cascadeFlux(llmService.callUser(prompt), content -> {
+		return FluxUtil.<ChatResponse, String>cascadeFlux(
+				llmService.callUserObserved("schema-selection.select", prompt), content -> {
 			Flux<ChatResponse> nextFlux;
 			if (sqlGenerateSchemaMissingAdvice != null) {
 				log.debug("Adding tables from schema missing advice");

@@ -15,7 +15,9 @@
  */
 package com.alibaba.cloud.ai.dataagent.workflow.agent;
 
+import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.agent.Agent;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
@@ -24,6 +26,7 @@ import com.alibaba.cloud.ai.graph.agent.flow.builder.FlowGraphBuilder;
 import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -40,6 +43,8 @@ public final class DataAnalysisSupervisorAgent extends SupervisorAgent {
 	public static final String REQUEST_UNDERSTANDING_AGENT = "request_understanding_agent";
 
 	public static final String DATA_PREPARATION_AGENT = "data_preparation_agent";
+
+	public static final String DATA_DISCOVERY_AGENT = "data_discovery_agent";
 
 	public static final String PLANNING_AGENT = "planning_agent";
 
@@ -69,13 +74,20 @@ public final class DataAnalysisSupervisorAgent extends SupervisorAgent {
 		return super.buildSpecificGraph(config);
 	}
 
-	public static String initialHandoffMessage() {
-		return handoffMessage(REQUEST_UNDERSTANDING_AGENT);
+	public synchronized void configure(CompileConfig compileConfig) {
+		if (compiledGraph != null) {
+			throw new IllegalStateException("Supervisor agent has already been compiled");
+		}
+		this.compileConfig = Objects.requireNonNull(compileConfig, "compileConfig cannot be null");
 	}
 
-	public static String handoffMessage(String nextAgent) {
-		return "DATA_AGENT_HANDOFF recommended_next=" + nextAgent
-				+ ". The supervisor must select exactly this agent, or FINISH when recommended_next=FINISH.";
+	public RunnableConfig updateState(RunnableConfig config, Map<String, Object> values) throws Exception {
+		return getAndCompileGraph().updateState(config, values);
+	}
+
+	public static String capabilityResultMessage(String completedAgent, String nextHint) {
+		return "DATA_AGENT_RESULT completed_agent=" + completedAgent + " next_hint=" + nextHint
+				+ ". The next_hint is advisory; the supervisor must independently select the next agent.";
 	}
 
 }

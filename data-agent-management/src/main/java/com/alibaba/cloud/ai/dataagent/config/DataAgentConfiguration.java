@@ -24,6 +24,7 @@ import com.alibaba.cloud.ai.dataagent.service.code.CodePoolExecutorServiceFactor
 import com.alibaba.cloud.ai.dataagent.service.code.docker.DockerExecutorFactory;
 import com.alibaba.cloud.ai.dataagent.service.file.FileStorageService;
 import com.alibaba.cloud.ai.dataagent.service.file.FileStorageServiceFactory;
+import com.alibaba.cloud.ai.dataagent.service.langfuse.LangfuseService;
 import com.alibaba.cloud.ai.dataagent.service.llm.LlmService;
 import com.alibaba.cloud.ai.dataagent.service.llm.impls.StreamLlmService;
 import com.alibaba.cloud.ai.dataagent.service.vectorstore.SimpleVectorStoreInitialization;
@@ -34,11 +35,14 @@ import com.alibaba.cloud.ai.dataagent.splitter.SemanticTextSplitter;
 import com.alibaba.cloud.ai.dataagent.splitter.ParagraphTextSplitter;
 import com.alibaba.cloud.ai.dataagent.util.McpServerToolUtil;
 import com.alibaba.cloud.ai.dataagent.util.NodeBeanUtil;
+import com.alibaba.cloud.ai.dataagent.util.JsonUtil;
+import com.alibaba.cloud.ai.dataagent.util.ChatResponseUtil;
 import com.alibaba.cloud.ai.dataagent.service.aimodelconfig.AiModelRegistry;
 import com.alibaba.cloud.ai.dataagent.service.aimodelconfig.EmbeddingModelCompatibilityValidator;
 import com.alibaba.cloud.ai.dataagent.strategy.EnhancedTokenCountBatchingStrategy;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.DataAnalysisAgentFactory;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.DataAnalysisSupervisorAgent;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.AgentDescriptor;
 import com.alibaba.cloud.ai.dataagent.workflow.dispatcher.*;
 import com.alibaba.cloud.ai.dataagent.workflow.node.*;
 import com.alibaba.cloud.ai.graph.CompileConfig;
@@ -62,6 +66,8 @@ import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -120,8 +126,8 @@ public class DataAgentConfiguration implements DisposableBean {
 
 	@Bean
 	@ConditionalOnMissingBean(LlmService.class)
-	public LlmService llmService(AiModelRegistry aiModelRegistry) {
-		return new StreamLlmService(aiModelRegistry);
+	public LlmService llmService(AiModelRegistry aiModelRegistry, LangfuseService langfuseService) {
+		return new StreamLlmService(aiModelRegistry, langfuseService);
 	}
 
 	@Bean
@@ -160,27 +166,48 @@ public class DataAgentConfiguration implements DisposableBean {
 
 	@Bean
 	public DataAnalysisSupervisorAgent nl2sqlMultiAgent(NodeBeanUtil nodeBeanUtil,
-			CodeExecutorProperties codeExecutorProperties, AiModelRegistry aiModelRegistry) {
+			CodeExecutorProperties codeExecutorProperties, AiModelRegistry aiModelRegistry,
+			LangfuseService langfuseService) {
 		KeyStrategyFactory keyStrategyFactory = nl2sqlKeyStrategyFactory();
 		List<Agent> capabilityAgents = new DataAnalysisAgentFactory(nodeBeanUtil, codeExecutorProperties,
 				keyStrategyFactory).createAgents();
 		ReactAgent routerAgent = ReactAgent.builder()
 			.name(DataAnalysisSupervisorAgent.ROUTER_AGENT_NAME)
 			.description("Selects the next data-analysis capability agent")
-			.model(registryBackedChatModel(aiModelRegistry))
-			.systemPrompt("""
-					You are the deterministic supervisor router for a data-analysis system.
-					Return only a JSON array containing exactly one value.
-					The latest message beginning with DATA_AGENT_HANDOFF contains recommended_next.
-					You must return that exact recommended_next value in the array.
-					If recommended_next=FINISH, return ["FINISH"].
-					If no DATA_AGENT_HANDOFF message exists, return ["request_understanding_agent"].
-					Never infer, skip, reorder or run multiple agents.
-					""")
+			.model(registryBackedChatModel(aiModelRegistry, langfuseService))
+			.systemPrompt(buildSupervisorPrompt(capabilityAgents))
 			.includeContents(false)
 			.build();
 
 		return new DataAnalysisSupervisorAgent(routerAgent, capabilityAgents, keyStrategyFactory);
+	}
+
+	String buildSupervisorPrompt(List<Agent> capabilityAgents) {
+		String agentCatalog = capabilityAgents.stream().map(agent -> {
+			if (agent instanceof AgentDescriptor descriptor) {
+				return descriptor.basicInfo().toPromptLine();
+			}
+			return "- %s: %s".formatted(agent.name(), agent.description());
+		}).collect(java.util.stream.Collectors.joining("\n"));
+
+		return """
+					You are the supervisor of a data-analysis multi-agent system.
+					Choose the single best next agent from the current conversation and execution progress.
+
+					Available agents:
+					%s
+
+					Messages beginning with DATA_AGENT_RESULT report which capability just completed.
+					Their next_hint is advisory context only; independently verify it against the conversation
+					and current progress. Do not repeat a completed capability unless retry or repair is needed.
+					Select FINISH only when the request has been answered, needs clarification from the user,
+					or the final report is complete.
+
+					Return only a valid JSON array containing exactly one agent name or "FINISH".
+					When finishing, the only valid response is ["FINISH"]. Never return bare FINISH,
+					"FINISH", {"next":"FINISH"}, Markdown, explanations or multiple agents.
+					Valid examples: ["request_understanding_agent"] and ["FINISH"].
+					""".formatted(agentCatalog);
 	}
 
 	/**
@@ -216,6 +243,8 @@ public class DataAgentConfiguration implements DisposableBean {
 			keyStrategyHashMap.put(EVIDENCE, KeyStrategy.REPLACE);
 			keyStrategyHashMap.put(TABLE_DOCUMENTS_FOR_SCHEMA_OUTPUT, KeyStrategy.REPLACE);
 			keyStrategyHashMap.put(COLUMN_DOCUMENTS__FOR_SCHEMA_OUTPUT, KeyStrategy.REPLACE);
+			keyStrategyHashMap.put(SCHEMA_DISCOVERY_MODE, KeyStrategy.REPLACE);
+			keyStrategyHashMap.put(BUSINESS_DATA_DISCOVERY_NODE_OUTPUT, KeyStrategy.REPLACE);
 			keyStrategyHashMap.put(TABLE_RELATION_OUTPUT, KeyStrategy.REPLACE);
 			keyStrategyHashMap.put(TABLE_RELATION_EXCEPTION_OUTPUT, KeyStrategy.REPLACE);
 			keyStrategyHashMap.put(TABLE_RELATION_RETRY_COUNT, KeyStrategy.REPLACE);
@@ -250,18 +279,94 @@ public class DataAgentConfiguration implements DisposableBean {
 		};
 	}
 
-	private ChatModel registryBackedChatModel(AiModelRegistry aiModelRegistry) {
+	private ChatModel registryBackedChatModel(AiModelRegistry aiModelRegistry, LangfuseService langfuseService) {
 		return new ChatModel() {
 			@Override
 			public ChatResponse call(Prompt prompt) {
-				return aiModelRegistry.getChatModel().call(prompt);
+				return langfuseService.traceModelCall("supervisor-router", serializePrompt(prompt),
+						() -> normalizeRouterResponse(aiModelRegistry.getChatModel().call(prompt)));
 			}
 
 			@Override
 			public Flux<ChatResponse> stream(Prompt prompt) {
-				return aiModelRegistry.getChatModel().stream(prompt);
+				return langfuseService.traceModelStream("supervisor-router", serializePrompt(prompt),
+						normalizeRouterStream(aiModelRegistry.getChatModel().stream(prompt)));
 			}
 		};
+	}
+
+	Flux<ChatResponse> normalizeRouterStream(Flux<ChatResponse> responses) {
+		return responses.collectList().flatMapMany(chunks -> {
+			if (chunks.isEmpty()) {
+				return Flux.empty();
+			}
+			String text = chunks.stream().map(ChatResponseUtil::getText).collect(java.util.stream.Collectors.joining());
+			ChatResponse lastResponse = chunks.get(chunks.size() - 1);
+			return Flux.just(responseWithText(lastResponse, normalizeRouterText(text)));
+		});
+	}
+
+	ChatResponse normalizeRouterResponse(ChatResponse response) {
+		if (response == null) {
+			return null;
+		}
+		return responseWithText(response, normalizeRouterText(ChatResponseUtil.getText(response)));
+	}
+
+	private String normalizeRouterText(String text) {
+		String trimmed = text == null ? "" : text.trim();
+		if (DataAnalysisSupervisorAgent.FINISH.equalsIgnoreCase(trimmed)
+				|| ("\"" + DataAnalysisSupervisorAgent.FINISH + "\"").equalsIgnoreCase(trimmed)) {
+			return "[\"FINISH\"]";
+		}
+		return trimmed;
+	}
+
+	private ChatResponse responseWithText(ChatResponse source, String text) {
+		Generation sourceGeneration = source.getResult();
+		Generation generation = sourceGeneration == null ? new Generation(new AssistantMessage(text))
+				: new Generation(new AssistantMessage(text), sourceGeneration.getMetadata());
+		return new ChatResponse(List.of(generation), source.getMetadata());
+	}
+
+	String serializePrompt(Prompt prompt) {
+		Map<String, Object> payload = new LinkedHashMap<>();
+		payload.put("messages", prompt.getInstructions().stream().map(message -> {
+			Map<String, Object> serializedMessage = new LinkedHashMap<>();
+			serializedMessage.put("role", message.getMessageType().name().toLowerCase(Locale.ROOT));
+			serializedMessage.put("content", message.getText());
+			if (message.getMetadata() != null && !message.getMetadata().isEmpty()) {
+				serializedMessage.put("metadata", message.getMetadata());
+			}
+			return serializedMessage;
+		}).toList());
+
+		if (prompt.getOptions() != null) {
+			Map<String, Object> options = new LinkedHashMap<>();
+			options.put("model", prompt.getOptions().getModel());
+			options.put("temperature", prompt.getOptions().getTemperature());
+			options.put("maxTokens", prompt.getOptions().getMaxTokens());
+			options.put("topP", prompt.getOptions().getTopP());
+			options.values().removeIf(Objects::isNull);
+			if (!options.isEmpty()) {
+				payload.put("options", options);
+			}
+		}
+
+		try {
+			return JsonUtil.getObjectMapper().writeValueAsString(payload);
+		}
+		catch (Exception exception) {
+			log.warn("Failed to serialize supervisor router prompt as JSON; recording plain prompt contents",
+					exception);
+			try {
+				return JsonUtil.getObjectMapper().writeValueAsString(Map.of("content", prompt.getContents()));
+			}
+			catch (Exception fallbackException) {
+				log.warn("Failed to serialize supervisor router prompt fallback", fallbackException);
+				return "{\"messages\":[]}";
+			}
+		}
 	}
 
 	/**

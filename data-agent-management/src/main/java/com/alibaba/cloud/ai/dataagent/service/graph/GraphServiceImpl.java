@@ -27,7 +27,6 @@ import com.alibaba.cloud.ai.dataagent.vo.GraphNodeResponse;
 import com.alibaba.cloud.ai.graph.*;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
-import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
@@ -54,7 +53,7 @@ import static com.alibaba.cloud.ai.dataagent.constant.Constant.*;
 @Service
 public class GraphServiceImpl implements GraphService {
 
-	private final CompiledGraph compiledGraph;
+	private final DataAnalysisSupervisorAgent supervisorAgent;
 
 	private final ExecutorService executor;
 
@@ -66,10 +65,12 @@ public class GraphServiceImpl implements GraphService {
 
 	private final LangfuseService langfuseReporter;
 
-	public GraphServiceImpl(StateGraph stateGraph, CompileConfig compileConfig, BaseCheckpointSaver checkpointSaver,
+	public GraphServiceImpl(DataAnalysisSupervisorAgent supervisorAgent, CompileConfig compileConfig,
+			BaseCheckpointSaver checkpointSaver,
 			ExecutorService executorService, MultiTurnContextManager multiTurnContextManager,
-			LangfuseService langfuseReporter) throws GraphStateException {
-		this.compiledGraph = stateGraph.compile(compileConfig);
+			LangfuseService langfuseReporter) {
+		supervisorAgent.configure(compileConfig);
+		this.supervisorAgent = supervisorAgent;
 		this.checkpointSaver = checkpointSaver;
 		this.executor = executorService;
 		this.multiTurnContextManager = multiTurnContextManager;
@@ -80,7 +81,7 @@ public class GraphServiceImpl implements GraphService {
 	public String nl2sql(String naturalQuery, String agentId) throws GraphRunnerException {
 		RunnableConfig config = RunnableConfig.builder().threadId(UUID.randomUUID().toString()).build();
 		try {
-			OverAllState state = compiledGraph
+			OverAllState state = supervisorAgent
 				.invoke(Map.of(IS_ONLY_NL2SQL, true, INPUT_KEY, naturalQuery, AGENT_ID, agentId, "messages",
 						initialSupervisorMessages(naturalQuery)), config)
 				.orElseThrow();
@@ -185,7 +186,7 @@ public class GraphServiceImpl implements GraphService {
 
 		String multiTurnContext = multiTurnContextManager.buildContext(conversationId);
 		multiTurnContextManager.beginTurn(conversationId, query);
-		Flux<NodeOutput> nodeOutputFlux = compiledGraph.stream(
+		Flux<NodeOutput> nodeOutputFlux = streamSupervisor(
 				Map.of(IS_ONLY_NL2SQL, nl2sqlOnly, INPUT_KEY, query, AGENT_ID, agentId, CONVERSATION_ID, conversationId,
 						HUMAN_REVIEW_ENABLED, humanReviewEnabled, MULTI_TURN_CONTEXT, multiTurnContext, TRACE_THREAD_ID,
 						threadId, "messages", initialSupervisorMessages(query)),
@@ -226,7 +227,7 @@ public class GraphServiceImpl implements GraphService {
 		RunnableConfig baseConfig = RunnableConfig.builder().threadId(threadId).build();
 		RunnableConfig updatedConfig;
 		try {
-			updatedConfig = compiledGraph.updateState(baseConfig, stateUpdate);
+			updatedConfig = supervisorAgent.updateState(baseConfig, stateUpdate);
 		}
 		catch (Exception e) {
 			throw new IllegalStateException("Failed to update graph state for human feedback", e);
@@ -235,8 +236,17 @@ public class GraphServiceImpl implements GraphService {
 			.addMetadata(RunnableConfig.HUMAN_FEEDBACK_METADATA_KEY, feedbackData)
 			.build();
 
-		Flux<NodeOutput> nodeOutputFlux = compiledGraph.stream(null, resumeConfig);
+		Flux<NodeOutput> nodeOutputFlux = streamSupervisor(null, resumeConfig);
 		subscribeToFlux(context, nodeOutputFlux, graphRequest, agentId, threadId);
+	}
+
+	private Flux<NodeOutput> streamSupervisor(Map<String, Object> input, RunnableConfig config) {
+		try {
+			return supervisorAgent.stream(input, config);
+		}
+		catch (GraphRunnerException e) {
+			throw new IllegalStateException("Failed to start supervisor agent stream", e);
+		}
 	}
 
 	/**
@@ -434,8 +444,7 @@ public class GraphServiceImpl implements GraphService {
 	}
 
 	private List<Message> initialSupervisorMessages(String query) {
-		return List.of(new UserMessage(query),
-				new UserMessage(DataAnalysisSupervisorAgent.initialHandoffMessage()));
+		return List.of(new UserMessage(query));
 	}
 
 	private boolean isAwaitingHumanFeedback(GraphRequest request, RunnableConfig config) {

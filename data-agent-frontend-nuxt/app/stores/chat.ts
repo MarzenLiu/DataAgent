@@ -50,7 +50,8 @@ export interface ChatRequestOptions {
 	pageSize: number;
 }
 
-export const useChatStore = defineStore('chat', () => {
+export const useChatStore = defineStore('chat',
+	() => {
 	// ── Session list state ──────────────────────────────────────────────────────
 	const sessions = ref<ExtendedChatSession[]>([]);
 	const currentSession = ref<ChatSession | null>(null);

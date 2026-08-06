@@ -110,7 +110,7 @@ public class UserProfileNode implements NodeAction {
 				</user_input>
 				""".formatted(OUTPUT_CONVERTER.getFormat(), StringUtils.defaultString(input));
 		try {
-			List<String> chunks = llmService.callUser(prompt)
+			List<String> chunks = llmService.callUserObserved("user-profile.extract-profile", prompt)
 				.map(ChatResponseUtil::getText)
 				.collectList()
 				.block();

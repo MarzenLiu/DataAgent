@@ -19,12 +19,11 @@ import com.alibaba.cloud.ai.dataagent.dto.GraphRequest;
 import com.alibaba.cloud.ai.dataagent.enums.GraphEventType;
 import com.alibaba.cloud.ai.dataagent.service.graph.Context.MultiTurnContextManager;
 import com.alibaba.cloud.ai.dataagent.service.langfuse.LangfuseService;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.DataAnalysisSupervisorAgent;
 import com.alibaba.cloud.ai.dataagent.vo.GraphNodeResponse;
-import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
-import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
@@ -45,6 +44,7 @@ import reactor.core.publisher.Sinks;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -60,7 +60,7 @@ import static org.mockito.Mockito.*;
 class GraphServiceImplTest {
 
 	@Mock
-	private CompiledGraph compiledGraph;
+	private DataAnalysisSupervisorAgent supervisorAgent;
 
 	@Mock
 	private MultiTurnContextManager multiTurnContextManager;
@@ -82,11 +82,8 @@ class GraphServiceImplTest {
 	void setUp() throws Exception {
 		executor = Executors.newSingleThreadExecutor();
 
-		StateGraph mockStateGraph = mock(StateGraph.class);
-		when(mockStateGraph.compile(any())).thenReturn(compiledGraph);
-
 		CompileConfig compileConfig = CompileConfig.builder().build();
-		graphService = new GraphServiceImpl(mockStateGraph, compileConfig, checkpointSaver, executor,
+		graphService = new GraphServiceImpl(supervisorAgent, compileConfig, checkpointSaver, executor,
 				multiTurnContextManager, langfuseReporter);
 
 		when(langfuseReporter.startLLMSpan(anyString(), any())).thenReturn(mockSpan);
@@ -103,13 +100,13 @@ class GraphServiceImplTest {
 	void nl2sql_validQuery_returnsResult() throws GraphRunnerException {
 		OverAllState mockState = mock(OverAllState.class);
 		when(mockState.value(eq("SQL_GENERATE_OUTPUT"), eq(""))).thenReturn("SELECT * FROM users");
-		when(compiledGraph.invoke(anyMap(), any(RunnableConfig.class))).thenReturn(Optional.of(mockState));
+		when(supervisorAgent.invoke(anyMap(), any(RunnableConfig.class))).thenReturn(Optional.of(mockState));
 
 		String result = graphService.nl2sql("show all users", "1");
 
 		assertEquals("SELECT * FROM users", result);
 		var configCaptor = org.mockito.ArgumentCaptor.forClass(RunnableConfig.class);
-		verify(compiledGraph).invoke(anyMap(), configCaptor.capture());
+		verify(supervisorAgent).invoke(anyMap(), configCaptor.capture());
 		assertTrue(configCaptor.getValue().threadId().isPresent());
 		assertNotEquals(BaseCheckpointSaver.THREAD_ID_DEFAULT, configCaptor.getValue().threadId().orElseThrow());
 		try {
@@ -124,7 +121,7 @@ class GraphServiceImplTest {
 	void nl2sql_emptyResult_returnsEmptyString() throws GraphRunnerException {
 		OverAllState mockState = mock(OverAllState.class);
 		when(mockState.value(eq("SQL_GENERATE_OUTPUT"), eq(""))).thenReturn("");
-		when(compiledGraph.invoke(anyMap(), any(RunnableConfig.class))).thenReturn(Optional.of(mockState));
+		when(supervisorAgent.invoke(anyMap(), any(RunnableConfig.class))).thenReturn(Optional.of(mockState));
 
 		String result = graphService.nl2sql("invalid query", "1");
 
@@ -132,7 +129,7 @@ class GraphServiceImplTest {
 	}
 
 	@Test
-	void graphStreamProcess_newProcess_setsThreadIdIfMissing() {
+	void graphStreamProcess_newProcess_setsThreadIdIfMissing() throws GraphRunnerException {
 		GraphRequest request = GraphRequest.builder()
 			.agentId("1")
 			.conversationId("conversation-1")
@@ -141,7 +138,7 @@ class GraphServiceImplTest {
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().multicast().onBackpressureBuffer();
 
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
 
 		graphService.graphStreamProcess(sink, request);
 
@@ -151,7 +148,7 @@ class GraphServiceImplTest {
 	}
 
 	@Test
-	void graphStreamProcess_legacyThreadId_startsFreshRunAndKeepsConversationIdentity() {
+	void graphStreamProcess_legacyThreadId_startsFreshRunAndKeepsConversationIdentity() throws GraphRunnerException {
 		GraphRequest request = GraphRequest.builder()
 			.agentId("1")
 			.threadId("existing-thread")
@@ -160,7 +157,7 @@ class GraphServiceImplTest {
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().multicast().onBackpressureBuffer();
 
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
 
 		graphService.graphStreamProcess(sink, request);
 
@@ -179,13 +176,15 @@ class GraphServiceImplTest {
 			.humanFeedbackContent("approve")
 			.build();
 		RunnableConfig updatedConfig = RunnableConfig.builder().threadId("interrupted-run").build();
-		when(compiledGraph.updateState(any(RunnableConfig.class), anyMap())).thenReturn(updatedConfig);
-		when(compiledGraph.stream(isNull(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+		when(supervisorAgent.updateState(any(RunnableConfig.class), anyMap())).thenReturn(updatedConfig);
+		when(supervisorAgent.stream(org.mockito.ArgumentMatchers.<Map<String, Object>>isNull(),
+				any(RunnableConfig.class)))
+			.thenReturn(Flux.empty());
 
 		graphService.graphStreamProcess(Sinks.many().multicast().onBackpressureBuffer(), request);
 
 		var configCaptor = org.mockito.ArgumentCaptor.forClass(RunnableConfig.class);
-		verify(compiledGraph).updateState(configCaptor.capture(), anyMap());
+		verify(supervisorAgent).updateState(configCaptor.capture(), anyMap());
 		assertEquals("interrupted-run", configCaptor.getValue().threadId().orElseThrow());
 		assertEquals("interrupted-run", request.getThreadId());
 	}
@@ -198,7 +197,7 @@ class GraphServiceImplTest {
 			.state(java.util.Map.of())
 			.build();
 		when(checkpointSaver.get(any(RunnableConfig.class))).thenReturn(Optional.of(checkpoint));
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().unicast().onBackpressureBuffer();
 		var responsesFuture = sink.asFlux().map(ServerSentEvent::data).collectList().toFuture();
@@ -229,7 +228,7 @@ class GraphServiceImplTest {
 			.state(java.util.Map.of())
 			.build();
 		when(checkpointSaver.get(any(RunnableConfig.class))).thenReturn(Optional.of(checkpoint));
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().unicast().onBackpressureBuffer();
 		var responsesFuture = sink.asFlux().map(ServerSentEvent::data).collectList().toFuture();
@@ -259,9 +258,11 @@ class GraphServiceImplTest {
 			.state(java.util.Map.of())
 			.build();
 		when(checkpointSaver.get(any(RunnableConfig.class))).thenReturn(Optional.of(checkpoint));
-		when(compiledGraph.updateState(any(RunnableConfig.class), anyMap()))
+		when(supervisorAgent.updateState(any(RunnableConfig.class), anyMap()))
 			.thenReturn(RunnableConfig.builder().threadId("interrupted-run").build());
-		when(compiledGraph.stream(isNull(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+		when(supervisorAgent.stream(org.mockito.ArgumentMatchers.<Map<String, Object>>isNull(),
+				any(RunnableConfig.class)))
+			.thenReturn(Flux.empty());
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().unicast().onBackpressureBuffer();
 		var responsesFuture = sink.asFlux().map(ServerSentEvent::data).collectList().toFuture();
@@ -298,7 +299,7 @@ class GraphServiceImplTest {
 		StreamingOutput<?> second = streamingOutput("IntentRecognitionNode", "second", regularState);
 		StreamingOutput<?> other = streamingOutput("QueryEnhanceNode", "other", regularState);
 		StreamingOutput<?> retry = streamingOutput("IntentRecognitionNode", "retry", finalState);
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class)))
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class)))
 			.thenReturn(Flux.just(first, second, other, retry));
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().unicast().onBackpressureBuffer();
@@ -328,7 +329,7 @@ class GraphServiceImplTest {
 		OverAllState state = new OverAllState();
 		StreamingOutput<?> routerOutput = streamingOutput("_AGENT_MODEL_",
 				"[\"request_understanding_agent\"]", state);
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.just(routerOutput));
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.just(routerOutput));
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().unicast().onBackpressureBuffer();
 		var responsesFuture = sink.asFlux().map(ServerSentEvent::data).collectList().toFuture();
@@ -365,7 +366,7 @@ class GraphServiceImplTest {
 	}
 
 	@Test
-	void stopStreamProcessing_existingThread_cleansUp() {
+	void stopStreamProcessing_existingThread_cleansUp() throws GraphRunnerException {
 		GraphRequest request = GraphRequest.builder()
 			.agentId("1")
 			.conversationId("conversation-to-stop")
@@ -374,7 +375,7 @@ class GraphServiceImplTest {
 			.build();
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().multicast().onBackpressureBuffer();
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.never());
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.never());
 
 		graphService.graphStreamProcess(sink, request);
 		String runId = request.getThreadId();
@@ -399,7 +400,7 @@ class GraphServiceImplTest {
 			.build();
 		CountDownLatch subscribed = new CountDownLatch(1);
 		CountDownLatch cancelled = new CountDownLatch(1);
-		when(compiledGraph.stream(anyMap(), any(RunnableConfig.class)))
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class)))
 			.thenReturn(Flux.<com.alibaba.cloud.ai.graph.NodeOutput>never()
 				.doOnSubscribe(ignored -> subscribed.countDown())
 				.doOnCancel(cancelled::countDown));
@@ -422,8 +423,8 @@ class GraphServiceImplTest {
 	}
 
 	@Test
-	void nl2sql_graphRunnerException_throwsException() {
-		when(compiledGraph.invoke(anyMap(), any(RunnableConfig.class)))
+	void nl2sql_graphRunnerException_throwsException() throws GraphRunnerException {
+		when(supervisorAgent.invoke(anyMap(), any(RunnableConfig.class)))
 			.thenThrow(new RuntimeException("Graph execution failed"));
 
 		assertThrows(RuntimeException.class, () -> graphService.nl2sql("test", "1"));
@@ -431,7 +432,7 @@ class GraphServiceImplTest {
 
 	@Test
 	void nl2sql_emptyOptional_returnsEmpty() throws GraphRunnerException {
-		when(compiledGraph.invoke(anyMap(), any(RunnableConfig.class))).thenReturn(Optional.empty());
+		when(supervisorAgent.invoke(anyMap(), any(RunnableConfig.class))).thenReturn(Optional.empty());
 
 		assertThrows(Exception.class, () -> graphService.nl2sql("test", "1"));
 	}

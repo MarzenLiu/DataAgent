@@ -58,6 +58,9 @@ class Nl2SqlServiceImplTest {
 		when(llmService.callUser(anyString())).thenReturn(Flux.just(mockResponse));
 		when(llmService.callUser(anyString(), any())).thenReturn(Flux.just(mockResponse));
 		when(llmService.callSystem(anyString())).thenReturn(Flux.just(mockResponse));
+		when(llmService.callUserObserved(anyString(), anyString())).thenReturn(Flux.just(mockResponse));
+		when(llmService.callUserObserved(anyString(), anyString(), any())).thenReturn(Flux.just(mockResponse));
+		when(llmService.callSystemObserved(anyString(), anyString())).thenReturn(Flux.just(mockResponse));
 		when(llmService.toStringFlux(any())).thenReturn(Flux.just("SELECT * FROM users"));
 	}
 
@@ -83,7 +86,7 @@ class Nl2SqlServiceImplTest {
 		Flux<ChatResponse> result = nl2SqlService.performSemanticConsistency(dto);
 
 		StepVerifier.create(result).expectNextCount(1).verifyComplete();
-		verify(llmService).callUser(anyString(), any());
+		verify(llmService).callUserObserved(anyString(), anyString(), any());
 	}
 
 	@Test
@@ -98,7 +101,7 @@ class Nl2SqlServiceImplTest {
 		Flux<String> result = nl2SqlService.generateSql(dto);
 
 		StepVerifier.create(result).expectNext("SELECT * FROM users").verifyComplete();
-		verify(llmService).callSystem(anyString());
+		verify(llmService).callSystemObserved(anyString(), anyString());
 	}
 
 	@Test
@@ -114,7 +117,7 @@ class Nl2SqlServiceImplTest {
 		Flux<String> result = nl2SqlService.generateSql(dto);
 
 		StepVerifier.create(result).expectNext("SELECT * FROM users").verifyComplete();
-		verify(llmService).callUser(anyString());
+		verify(llmService).callUserObserved(anyString(), anyString());
 	}
 
 	@Test
@@ -129,7 +132,7 @@ class Nl2SqlServiceImplTest {
 		Flux<String> result = nl2SqlService.generateSql(dto);
 
 		StepVerifier.create(result).expectNext("SELECT * FROM users").verifyComplete();
-		verify(llmService).callSystem(anyString());
+		verify(llmService).callSystemObserved(anyString(), anyString());
 	}
 
 	@Test
@@ -172,7 +175,7 @@ class Nl2SqlServiceImplTest {
 			.build();
 
 		nl2SqlService.performSemanticConsistency(dto);
-		verify(llmService).callUser(anyString(), any());
+		verify(llmService).callUserObserved(anyString(), anyString(), any());
 	}
 
 	@Test
@@ -239,8 +242,8 @@ class Nl2SqlServiceImplTest {
 		Flux<String> result = nl2SqlService.generateSql(dto);
 
 		StepVerifier.create(result).expectNext("SELECT * FROM users").verifyComplete();
-		verify(llmService).callUser(anyString());
-		verify(llmService, never()).callSystem(anyString());
+		verify(llmService).callUserObserved(anyString(), anyString());
+		verify(llmService, never()).callSystemObserved(anyString(), anyString());
 	}
 
 	@Test
@@ -257,8 +260,8 @@ class Nl2SqlServiceImplTest {
 		Flux<String> result = nl2SqlService.generateSql(dto);
 
 		StepVerifier.create(result).expectNext("SELECT * FROM users").verifyComplete();
-		verify(llmService).callSystem(anyString());
-		verify(llmService, never()).callUser(anyString());
+		verify(llmService).callSystemObserved(anyString(), anyString());
+		verify(llmService, never()).callUserObserved(anyString(), anyString());
 	}
 
 }

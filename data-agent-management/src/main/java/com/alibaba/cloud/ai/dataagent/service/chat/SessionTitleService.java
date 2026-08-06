@@ -104,7 +104,8 @@ public class SessionTitleService {
 					使用中文输出，避免使用标点或引号，仅保留核心主题。
 					""";
 			String userPrompt = "用户输入：" + userMessage;
-			Flux<String> responseFlux = llmService.toStringFlux(llmService.call(systemPrompt, userPrompt));
+			Flux<String> responseFlux = llmService
+				.toStringFlux(llmService.callObserved("session-title.generate", systemPrompt, userPrompt));
 			return responseFlux.collect(StringBuilder::new, StringBuilder::append)
 				.map(StringBuilder::toString)
 				.block(Duration.ofSeconds(15));

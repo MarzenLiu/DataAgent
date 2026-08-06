@@ -16,6 +16,7 @@
 package com.alibaba.cloud.ai.dataagent.service.langfuse;
 
 import com.alibaba.cloud.ai.dataagent.dto.GraphRequest;
+import com.alibaba.cloud.ai.dataagent.util.ChatResponseUtil;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
@@ -24,9 +25,13 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author zihenzzz
@@ -61,14 +66,32 @@ public class LangfuseService {
 
 	private static final AttributeKey<Long> GEN_AI_TOTAL_TOKENS = AttributeKey.longKey("gen_ai.usage.total_tokens");
 
+	private static final AttributeKey<Long> GEN_AI_REASONING_TOKENS = AttributeKey
+		.longKey("gen_ai.usage.reasoning_tokens");
+
+	private static final AttributeKey<Long> GEN_AI_REQUEST_MAX_TOKENS = AttributeKey
+		.longKey("gen_ai.request.max_tokens");
+
+	private static final AttributeKey<String> GEN_AI_FINISH_REASON = AttributeKey
+		.stringKey("gen_ai.response.finish_reason");
+
+	private static final AttributeKey<Boolean> TOKEN_LIMIT_REACHED = AttributeKey
+		.booleanKey("data_agent.token_limit_reached");
+
+	private static final AttributeKey<Boolean> OUTPUT_EMPTY = AttributeKey.booleanKey("data_agent.output_empty");
+
 	private static final AttributeKey<String> ERROR_TYPE = AttributeKey.stringKey("error.type");
 
 	private static final AttributeKey<String> ERROR_MESSAGE = AttributeKey.stringKey("error.message");
 
+	private static final AttributeKey<String> OBSERVATION_TYPE = AttributeKey
+		.stringKey("langfuse.observation.type");
+
 	// --- Token 累计器，按 threadId 隔离 ---
 	private static final ConcurrentHashMap<String, long[]> TOKEN_ACCUMULATOR = new ConcurrentHashMap<>();
 
-	public LangfuseService(Tracer langfuseTracer, @Value("${langfuse.enabled:true}") boolean enabled) {
+	public LangfuseService(Tracer langfuseTracer,
+			@Value("${spring.ai.alibaba.data-agent.langfuse.enabled:false}") boolean enabled) {
 		this.tracer = langfuseTracer;
 		this.enabled = enabled;
 	}
@@ -126,6 +149,146 @@ public class LangfuseService {
 				tokens[1] += completionTokens;
 			}
 		}
+	}
+
+	public ChatResponse traceModelCall(String name, String input,
+			java.util.function.Supplier<ChatResponse> invocation) {
+		if (!enabled) {
+			return invocation.get();
+		}
+		Span span = startModelSpan(name, input);
+		try {
+			ChatResponse response = invocation.get();
+			ModelTraceStats stats = new ModelTraceStats(null);
+			stats.accept(response);
+			finishModelSpan(span, response == null ? "" : ChatResponseUtil.getText(response), stats, null);
+			return response;
+		}
+		catch (RuntimeException error) {
+			finishModelSpan(span, "", new ModelTraceStats(null), error);
+			throw error;
+		}
+	}
+
+	public Flux<ChatResponse> traceModelStream(String name, String input, Flux<ChatResponse> responses) {
+		return traceModelStream(name, input, responses, null);
+	}
+
+	public Flux<ChatResponse> traceModelStream(String name, String input, Flux<ChatResponse> responses,
+			Integer configuredMaxTokens) {
+		if (!enabled) {
+			return responses;
+		}
+		return Flux.defer(() -> {
+			Span span = startModelSpan(name, input);
+			StringBuilder output = new StringBuilder();
+			ModelTraceStats stats = new ModelTraceStats(configuredMaxTokens);
+			AtomicBoolean failed = new AtomicBoolean();
+			return responses.doOnNext(response -> {
+				output.append(ChatResponseUtil.getText(response));
+				stats.accept(response);
+			}).doOnError(error -> {
+				failed.set(true);
+				finishModelSpan(span, output.toString(), stats, error);
+			}).doOnComplete(() -> finishModelSpan(span, output.toString(), stats, null))
+				.doOnCancel(() -> {
+					if (failed.compareAndSet(false, true)) {
+						finishModelSpan(span, output.toString(), stats,
+								new IllegalStateException("Model stream cancelled"));
+					}
+				});
+		});
+	}
+
+	private Span startModelSpan(String name, String input) {
+		Span span = tracer.spanBuilder(name).setSpanKind(SpanKind.CLIENT).setParent(Context.current()).startSpan();
+		span.setAttribute(OBSERVATION_TYPE, "generation");
+		span.setAttribute(INPUT_VALUE, input != null ? input : "");
+		return span;
+	}
+
+	private void finishModelSpan(Span span, String output, ModelTraceStats stats, Throwable error) {
+		span.setAttribute(OUTPUT_VALUE, output != null ? output : "");
+		span.setAttribute(GEN_AI_PROMPT_TOKENS, stats.promptTokens);
+		span.setAttribute(GEN_AI_COMPLETION_TOKENS, stats.completionTokens);
+		span.setAttribute(GEN_AI_TOTAL_TOKENS, stats.promptTokens + stats.completionTokens);
+		span.setAttribute(GEN_AI_REASONING_TOKENS, stats.reasoningTokens);
+		if (stats.configuredMaxTokens != null) {
+			span.setAttribute(GEN_AI_REQUEST_MAX_TOKENS, stats.configuredMaxTokens.longValue());
+		}
+		if (stats.finishReason != null) {
+			span.setAttribute(GEN_AI_FINISH_REASON, stats.finishReason);
+		}
+		span.setAttribute(TOKEN_LIMIT_REACHED, stats.tokenLimitReached());
+		span.setAttribute(OUTPUT_EMPTY, isEmptyModelOutput(output));
+		if (error == null) {
+			span.setStatus(StatusCode.OK);
+		}
+		else {
+			span.setAttribute(ERROR_TYPE, error.getClass().getName());
+			span.setAttribute(ERROR_MESSAGE, String.valueOf(error.getMessage()));
+			span.recordException(error);
+			span.setStatus(StatusCode.ERROR);
+		}
+		span.end();
+	}
+
+	private boolean isEmptyModelOutput(String output) {
+		if (output == null || output.isBlank()) {
+			return true;
+		}
+		String normalized = output.trim();
+		return "{}".equals(normalized) || "null".equalsIgnoreCase(normalized);
+	}
+
+	private static final class ModelTraceStats {
+
+		private final Integer configuredMaxTokens;
+
+		private long promptTokens;
+
+		private long completionTokens;
+
+		private long reasoningTokens;
+
+		private String finishReason;
+
+		private ModelTraceStats(Integer configuredMaxTokens) {
+			this.configuredMaxTokens = configuredMaxTokens;
+		}
+
+		private void accept(ChatResponse response) {
+			if (response == null) {
+				return;
+			}
+			if (response.getResult() != null && response.getResult().getMetadata() != null) {
+				String currentFinishReason = response.getResult().getMetadata().getFinishReason();
+				if (currentFinishReason != null && !currentFinishReason.isBlank()) {
+					finishReason = currentFinishReason;
+				}
+			}
+			if (response.getMetadata() == null || response.getMetadata().getUsage() == null) {
+				return;
+			}
+			var usage = response.getMetadata().getUsage();
+			promptTokens = Math.max(promptTokens, usage.getPromptTokens());
+			completionTokens = Math.max(completionTokens, usage.getCompletionTokens());
+			if (usage.getNativeUsage() instanceof OpenAiApi.Usage nativeUsage
+					&& nativeUsage.completionTokenDetails() != null
+					&& nativeUsage.completionTokenDetails().reasoningTokens() != null) {
+				reasoningTokens = Math.max(reasoningTokens,
+						nativeUsage.completionTokenDetails().reasoningTokens());
+			}
+		}
+
+		private boolean tokenLimitReached() {
+			if ("length".equalsIgnoreCase(finishReason)) {
+				return true;
+			}
+			return configuredMaxTokens != null && configuredMaxTokens > 0
+					&& completionTokens >= Math.ceil(configuredMaxTokens * 0.98D);
+		}
+
 	}
 
 	/**

@@ -18,7 +18,7 @@ package com.alibaba.cloud.ai.dataagent.workflow.node;
 import static com.alibaba.cloud.ai.dataagent.constant.Constant.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,6 +28,7 @@ import java.util.Map;
 import com.alibaba.cloud.ai.dataagent.common.TestFixtures;
 import com.alibaba.cloud.ai.dataagent.dto.prompt.QueryEnhanceOutputDTO;
 import com.alibaba.cloud.ai.dataagent.mapper.AgentDatasourceMapper;
+import com.alibaba.cloud.ai.dataagent.mapper.AgentDatasourceTablesMapper;
 import com.alibaba.cloud.ai.dataagent.service.schema.SchemaService;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
@@ -50,21 +51,42 @@ class SchemaRecallNodeTest {
 	@Mock
 	private AgentDatasourceMapper agentDatasourceMapper;
 
+	@Mock
+	private AgentDatasourceTablesMapper agentDatasourceTablesMapper;
+
 	private SchemaRecallNode schemaRecallNode;
 
 	@BeforeEach
 	void setUp() {
-		schemaRecallNode = new SchemaRecallNode(schemaService, agentDatasourceMapper);
+		schemaRecallNode = new SchemaRecallNode(schemaService, agentDatasourceMapper, agentDatasourceTablesMapper);
 	}
 
 	private OverAllState createTestState() {
 		OverAllState state = new OverAllState();
 		state.registerKeyAndStrategy(QUERY_ENHANCE_NODE_OUTPUT, new ReplaceStrategy());
 		state.registerKeyAndStrategy(AGENT_ID, new ReplaceStrategy());
+		state.registerKeyAndStrategy(INPUT_KEY, new ReplaceStrategy());
+		state.registerKeyAndStrategy(SCHEMA_DISCOVERY_MODE, new ReplaceStrategy());
 		state.registerKeyAndStrategy(SCHEMA_RECALL_NODE_OUTPUT, new ReplaceStrategy());
 		state.registerKeyAndStrategy(TABLE_DOCUMENTS_FOR_SCHEMA_OUTPUT, new ReplaceStrategy());
 		state.registerKeyAndStrategy(COLUMN_DOCUMENTS__FOR_SCHEMA_OUTPUT, new ReplaceStrategy());
 		return state;
+	}
+
+	@Test
+	void apply_discoveryMode_recallsAllSelectedTablesWithoutSemanticSearch() throws Exception {
+		OverAllState state = createTestState();
+		state.updateState(Map.of(INPUT_KEY, "可以查询哪些业务数据", AGENT_ID, "9", SCHEMA_DISCOVERY_MODE, true));
+		when(agentDatasourceMapper.selectActiveDatasourceIdByAgentId(9L)).thenReturn(900);
+		when(agentDatasourceTablesMapper.getActiveAgentTables(9L)).thenReturn(List.of("orders", "customers"));
+		when(schemaService.getTableDocuments(900, List.of("orders", "customers")))
+			.thenReturn(List.of(createTableDocument("orders"), createTableDocument("customers")));
+		when(schemaService.getColumnDocumentsByTableName(eq(900), anyList())).thenReturn(List.of(new Document("cols")));
+
+		Map<String, Object> result = schemaRecallNode.apply(state);
+
+		assertTrue(result.containsKey(SCHEMA_RECALL_NODE_OUTPUT));
+		verify(schemaService, never()).getTableDocumentsByDatasource(anyInt(), anyString());
 	}
 
 	private QueryEnhanceOutputDTO createQueryEnhanceDTO(String query) {

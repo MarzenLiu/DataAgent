@@ -23,15 +23,38 @@ public interface LlmService {
 
 	Flux<ChatResponse> call(String system, String user);
 
+	default Flux<ChatResponse> callObserved(String observationName, String system, String user) {
+		return call(system, user);
+	}
+
 	/**
 	 * Call the model with system and user messages plus Spring AI structured-output
 	 * validation.
 	 */
 	Flux<ChatResponse> call(String system, String user, Class<?> outputType);
 
+	default Flux<ChatResponse> callObserved(String observationName, String system, String user, Class<?> outputType) {
+		return call(system, user, outputType);
+	}
+
 	Flux<ChatResponse> callSystem(String system);
 
+	default Flux<ChatResponse> callSystemObserved(String observationName, String system) {
+		return callSystem(system);
+	}
+
 	Flux<ChatResponse> callUser(String user);
+
+	default Flux<ChatResponse> callUserObserved(String observationName, String user) {
+		return callUser(user);
+	}
+
+	/**
+	 * Call the model with a request-specific completion-token budget.
+	 */
+	default Flux<ChatResponse> callUserObservedWithMaxTokens(String observationName, String user, Integer maxTokens) {
+		return callUserObserved(observationName, user);
+	}
 
 	/**
 	 * Call the model with Spring AI's structured-output validation advisor. The advisor
@@ -39,6 +62,10 @@ public interface LlmService {
 	 * the model to repair invalid output.
 	 */
 	Flux<ChatResponse> callUser(String user, Class<?> outputType);
+
+	default Flux<ChatResponse> callUserObserved(String observationName, String user, Class<?> outputType) {
+		return callUser(user, outputType);
+	}
 
 	default Flux<String> toStringFlux(Flux<ChatResponse> responseFlux) {
 		return responseFlux.map(ChatResponseUtil::getText);

@@ -17,6 +17,7 @@ package com.alibaba.cloud.ai.dataagent.workflow.node;
 
 import com.alibaba.cloud.ai.dataagent.dto.prompt.QueryEnhanceOutputDTO;
 import com.alibaba.cloud.ai.dataagent.mapper.AgentDatasourceMapper;
+import com.alibaba.cloud.ai.dataagent.mapper.AgentDatasourceTablesMapper;
 import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
@@ -58,14 +59,20 @@ public class SchemaRecallNode implements NodeAction {
 
 	private final AgentDatasourceMapper agentDatasourceMapper;
 
+	private final AgentDatasourceTablesMapper agentDatasourceTablesMapper;
+
+
+
 	@Override
 	public Map<String, Object> apply(OverAllState state) throws Exception {
 
 		// get input information
 		QueryEnhanceOutputDTO queryEnhanceOutputDTO = StateUtil.getObjectValue(state, QUERY_ENHANCE_NODE_OUTPUT,
-				QueryEnhanceOutputDTO.class);
-		String input = queryEnhanceOutputDTO.getCanonicalQuery();
+				QueryEnhanceOutputDTO.class, (QueryEnhanceOutputDTO) null);
+		String input = queryEnhanceOutputDTO != null ? queryEnhanceOutputDTO.getCanonicalQuery()
+				: StateUtil.getStringValue(state, INPUT_KEY);
 		String agentId = StateUtil.getStringValue(state, AGENT_ID);
+		boolean discoveryMode = state.value(SCHEMA_DISCOVERY_MODE, false);
 
 		// 查询 Agent 的激活数据源
 		Integer datasourceId = agentDatasourceMapper.selectActiveDatasourceIdByAgentId(Long.valueOf(agentId));
@@ -98,8 +105,14 @@ public class SchemaRecallNode implements NodeAction {
 		}
 
 		// Execute business logic first - recall schema information immediately
-		List<Document> tableDocuments = new ArrayList<>(
-				schemaService.getTableDocumentsByDatasource(datasourceId, input));
+		List<Document> tableDocuments;
+		if (discoveryMode && agentDatasourceTablesMapper != null) {
+			List<String> selectedTables = agentDatasourceTablesMapper.getActiveAgentTables(Long.parseLong(agentId));
+			tableDocuments = new ArrayList<>(schemaService.getTableDocuments(datasourceId, selectedTables));
+		}
+		else {
+			tableDocuments = new ArrayList<>(schemaService.getTableDocumentsByDatasource(datasourceId, input));
+		}
 		// extract table names
 		List<String> recalledTableNames = extractTableName(tableDocuments);
 		List<Document> columnDocuments = schemaService.getColumnDocumentsByTableName(datasourceId, recalledTableNames);

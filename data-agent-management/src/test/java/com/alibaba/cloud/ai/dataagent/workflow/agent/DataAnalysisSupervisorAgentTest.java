@@ -16,6 +16,8 @@
 package com.alibaba.cloud.ai.dataagent.workflow.agent;
 
 import com.alibaba.cloud.ai.dataagent.util.ChatResponseUtil;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.AgentBasicInfo;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.WorkflowCapabilityAgent;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.OverAllState;
@@ -31,6 +33,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,14 +51,17 @@ class DataAnalysisSupervisorAgentTest {
 	void supervisorRoutesCapabilityAgentAndFinishes() throws Exception {
 		KeyStrategyFactory keyStrategyFactory = keyStrategyFactory();
 		AtomicInteger modelCalls = new AtomicInteger();
+		List<String> observedPrompts = new ArrayList<>();
 		ChatModel model = new ChatModel() {
 			@Override
 			public ChatResponse call(Prompt prompt) {
+				observedPrompts.add(prompt.getContents());
 				return response(modelCalls.getAndIncrement());
 			}
 
 			@Override
 			public Flux<ChatResponse> stream(Prompt prompt) {
+				observedPrompts.add(prompt.getContents());
 				return Flux.just(response(modelCalls.getAndIncrement()));
 			}
 
@@ -74,14 +80,16 @@ class DataAnalysisSupervisorAgentTest {
 		DataAnalysisSupervisorAgent supervisor = new DataAnalysisSupervisorAgent(router, agents,
 				keyStrategyFactory);
 
-		List<Message> messages = List.of(new UserMessage("analyze sales"),
-				new UserMessage(DataAnalysisSupervisorAgent.initialHandoffMessage()));
+		List<Message> messages = List.of(new UserMessage("analyze sales"));
 		OverAllState state = supervisor.invoke(Map.of(INPUT_KEY, "analyze sales", "messages", messages))
 			.orElseThrow();
 
 		assertEquals("executed", state.value("request_agent_result").orElseThrow());
 		assertEquals(FINISH, state.value(MULTI_AGENT_NEXT).orElseThrow());
 		assertEquals(2, modelCalls.get());
+		assertFalse(observedPrompts.get(0).contains("DATA_AGENT_RESULT"));
+		assertTrue(observedPrompts.get(1).contains("DATA_AGENT_RESULT completed_agent="
+				+ REQUEST_UNDERSTANDING_AGENT));
 		assertEquals(7, supervisor.subAgents().size());
 		assertTrue(supervisor instanceof com.alibaba.cloud.ai.graph.agent.flow.agent.SupervisorAgent);
 	}
@@ -116,17 +124,18 @@ class DataAnalysisSupervisorAgentTest {
 		Agent producer = capabilityAgent(REQUEST_UNDERSTANDING_AGENT, keyStrategyFactory, node_async(state -> Map.of(
 				"business_state", "preserved",
 				MULTI_AGENT_NEXT, DATA_PREPARATION_AGENT,
-				"messages", new UserMessage(handoffMessage(DATA_PREPARATION_AGENT)))));
+				"messages", new UserMessage(capabilityResultMessage(REQUEST_UNDERSTANDING_AGENT,
+						DATA_PREPARATION_AGENT)))));
 		Agent consumer = capabilityAgent(DATA_PREPARATION_AGENT, keyStrategyFactory, node_async(state -> Map.of(
 				"consumer_result", state.value("business_state", "missing"),
 				MULTI_AGENT_NEXT, FINISH,
-				"messages", new UserMessage(handoffMessage(FINISH)))));
+				"messages", new UserMessage(capabilityResultMessage(DATA_PREPARATION_AGENT, FINISH)))));
 		DataAnalysisSupervisorAgent supervisor = new DataAnalysisSupervisorAgent(
 				ReactAgent.builder().name(ROUTER_AGENT_NAME).model(model).build(),
 				List.of(producer, consumer), keyStrategyFactory);
 
-		OverAllState state = supervisor.invoke(Map.of("messages",
-				List.of(new UserMessage(initialHandoffMessage())))).orElseThrow();
+		OverAllState state = supervisor.invoke(Map.of("messages", List.of(new UserMessage("analyze sales"))))
+			.orElseThrow();
 
 		assertEquals("preserved", state.value("consumer_result").orElseThrow());
 		assertEquals(3, modelCalls.get());
@@ -144,13 +153,13 @@ class DataAnalysisSupervisorAgentTest {
 	}
 
 	private Agent capabilityAgent(String name, KeyStrategyFactory keyStrategyFactory, boolean executable) {
-		return new WorkflowCapabilityAgent(name, name, () -> {
+		return new WorkflowCapabilityAgent(new AgentBasicInfo(name, name, "the test selects it"), () -> {
 			StateGraph graph = new StateGraph(name + "_graph", keyStrategyFactory);
 			if (executable) {
 				graph.addNode(name + "_action", node_async(state -> Map.of(
 						"request_agent_result", "executed",
 						MULTI_AGENT_NEXT, FINISH,
-						"messages", new UserMessage(DataAnalysisSupervisorAgent.handoffMessage(FINISH)))));
+						"messages", new UserMessage(DataAnalysisSupervisorAgent.capabilityResultMessage(name, FINISH)))));
 			}
 			else {
 				graph.addNode(name + "_action", node_async(state -> Map.of()));
@@ -161,7 +170,7 @@ class DataAnalysisSupervisorAgentTest {
 
 	private Agent capabilityAgent(String name, KeyStrategyFactory keyStrategyFactory,
 			com.alibaba.cloud.ai.graph.action.AsyncNodeAction action) {
-		return new WorkflowCapabilityAgent(name, name,
+		return new WorkflowCapabilityAgent(new AgentBasicInfo(name, name, "the test selects it"),
 				() -> new StateGraph(name + "_graph", keyStrategyFactory)
 					.addNode(name + "_action", action)
 					.addEdge(START, name + "_action")

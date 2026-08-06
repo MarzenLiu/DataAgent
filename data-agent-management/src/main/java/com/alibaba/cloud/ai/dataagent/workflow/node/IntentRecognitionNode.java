@@ -65,7 +65,8 @@ public class IntentRecognitionNode implements NodeAction {
 		log.debug("Built intent recognition prompt as follows \n {} \n", prompt);
 
 		// 调用LLM进行意图识别
-		Flux<ChatResponse> responseFlux = llmService.callUser(prompt, IntentRecognitionOutputDTO.class);
+		Flux<ChatResponse> responseFlux = llmService.callUserObserved("intent-recognition.classify", prompt,
+				IntentRecognitionOutputDTO.class);
 
 		Flux<GraphResponse<StreamingOutput>> generator = FluxUtil.createStreamingGenerator(this.getClass(), state,
 				responseFlux,

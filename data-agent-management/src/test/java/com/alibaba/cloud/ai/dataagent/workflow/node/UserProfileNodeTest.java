@@ -83,9 +83,10 @@ class UserProfileNodeTest {
 		assertEquals("saved", result.get(USER_PROFILE_STATUS));
 		assertSame(profile, result.get(USER_PROFILE));
 		verify(memoryService, never()).find(anyString());
-		verify(llmService).callUser(argThat(prompt -> prompt.contains("只允许输出一个合法 JSON 对象")
+		verify(llmService).callUserObserved(eq("user-profile.extract-profile"),
+				argThat(prompt -> prompt.contains("只允许输出一个合法 JSON 对象")
 				&& prompt.contains("\"contains_profile\"") && prompt.contains("\"preferences\"")));
-		verify(llmService, never()).callUser(anyString(), any());
+		verify(llmService, never()).callUserObserved(anyString(), anyString(), any());
 	}
 
 	@Test
@@ -120,7 +121,7 @@ class UserProfileNodeTest {
 				{"contains_profile":%s,"nickname":"%s","position":"%s","preferences":"%s"}
 				""".formatted(containsProfile, nickname, position, preferences);
 		lenient()
-			.when(llmService.callUser(anyString()))
+			.when(llmService.callUserObserved(anyString(), anyString()))
 			.thenReturn(Flux.just(ChatResponseUtil.createPureResponse(json)));
 	}
 

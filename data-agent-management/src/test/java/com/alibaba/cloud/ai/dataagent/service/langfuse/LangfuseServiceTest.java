@@ -16,6 +16,7 @@
 package com.alibaba.cloud.ai.dataagent.service.langfuse;
 
 import com.alibaba.cloud.ai.dataagent.dto.GraphRequest;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.Tracer;
@@ -24,6 +25,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.DefaultUsage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.openai.api.OpenAiApi;
+import reactor.core.publisher.Flux;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -157,6 +168,30 @@ class LangfuseServiceTest {
 		langfuseService.endSpanError(span, "thread-err", error);
 
 		verify(span).end();
+	}
+
+	@Test
+	void traceModelStream_recordsFinishReasonReasoningTokensAndTokenLimit() {
+		when(tracer.spanBuilder("token-limited")).thenReturn(spanBuilder);
+		when(spanBuilder.setSpanKind(any())).thenReturn(spanBuilder);
+		when(spanBuilder.setParent(any())).thenReturn(spanBuilder);
+		when(spanBuilder.startSpan()).thenReturn(span);
+		OpenAiApi.Usage.CompletionTokenDetails details = new OpenAiApi.Usage.CompletionTokenDetails(5900, null, null,
+				null);
+		OpenAiApi.Usage nativeUsage = new OpenAiApi.Usage(6000, 100, 6100, null, details);
+		DefaultUsage usage = new DefaultUsage(100, 6000, 6100, nativeUsage);
+		Generation generation = new Generation(new AssistantMessage("{}"),
+				ChatGenerationMetadata.builder().finishReason("length").build());
+		ChatResponse response = new ChatResponse(List.of(generation),
+				ChatResponseMetadata.builder().usage(usage).build());
+
+		langfuseService.traceModelStream("token-limited", "input", Flux.just(response), 6000).blockLast();
+
+		verify(span).setAttribute(AttributeKey.stringKey("gen_ai.response.finish_reason"), "length");
+		verify(span).setAttribute(AttributeKey.longKey("gen_ai.usage.reasoning_tokens"), 5900L);
+		verify(span).setAttribute(AttributeKey.longKey("gen_ai.request.max_tokens"), 6000L);
+		verify(span).setAttribute(AttributeKey.booleanKey("data_agent.token_limit_reached"), true);
+		verify(span).setAttribute(AttributeKey.booleanKey("data_agent.output_empty"), true);
 	}
 
 }

@@ -66,6 +66,10 @@ public final class Constant {
 
 	public static final String SCHEMA_RECALL_NODE_OUTPUT = "SCHEMA_RECALL_NODE_OUTPUT";
 
+	public static final String SCHEMA_DISCOVERY_MODE = "SCHEMA_DISCOVERY_MODE";
+
+	public static final String BUSINESS_DATA_DISCOVERY_NODE_OUTPUT = "BUSINESS_DATA_DISCOVERY_NODE_OUTPUT";
+
 	public static final String COLUMN_DOCUMENTS__FOR_SCHEMA_OUTPUT = "COLUMN_DOCUMENTS__FOR_SCHEMA_OUTPUT";
 
 	public static final String TABLE_RELATION_OUTPUT = "TABLE_RELATION_OUTPUT";
@@ -125,6 +129,8 @@ public final class Constant {
 	public static final String REPORT_GENERATOR_NODE = "REPORT_GENERATOR_NODE";
 
 	public static final String SCHEMA_RECALL_NODE = "SCHEMA_RECALL_NODE";
+
+	public static final String BUSINESS_DATA_DISCOVERY_NODE = "BUSINESS_DATA_DISCOVERY_NODE";
 
 	public static final String TABLE_RELATION_NODE = "TABLE_RELATION_NODE";
 

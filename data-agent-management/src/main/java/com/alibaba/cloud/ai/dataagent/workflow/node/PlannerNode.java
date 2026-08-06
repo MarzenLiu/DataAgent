@@ -100,7 +100,7 @@ public class PlannerNode implements NodeAction {
 		log.debug("Planner prompt: as follows \n{}\n", plannerPrompt);
 
 		// 调用LLM生成计划
-		return llmService.callUser(plannerPrompt);
+		return llmService.callUserObserved("planner.create-plan", plannerPrompt);
 	}
 
 	private Flux<ChatResponse> handleNl2SqlOnly(OverAllState state) {

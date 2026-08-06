@@ -17,6 +17,8 @@ package com.alibaba.cloud.ai.dataagent.workflow.agent;
 
 import com.alibaba.cloud.ai.dataagent.properties.CodeExecutorProperties;
 import com.alibaba.cloud.ai.dataagent.util.NodeBeanUtil;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.AgentDescriptor;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.WorkflowCapabilityAgent;
 import com.alibaba.cloud.ai.dataagent.workflow.dispatcher.SqlGenerateDispatcher;
 import com.alibaba.cloud.ai.graph.GraphRepresentation;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
@@ -51,9 +53,13 @@ class DataAnalysisAgentFactoryTest {
 		List<Agent> agents = new DataAnalysisAgentFactory(nodeBeanUtil,
 				new CodeExecutorProperties(), keyStrategyFactory).createAgents();
 
-		assertEquals(7, agents.size());
-		assertCapabilityContains(agents, REQUEST_UNDERSTANDING_AGENT, USER_PROFILE_NODE,
-				INTENT_RECOGNITION_NODE, EVIDENCE_RECALL_NODE, QUERY_ENHANCE_NODE);
+		assertEquals(8, agents.size());
+		assertTrue(agents.stream().allMatch(AgentDescriptor.class::isInstance));
+		assertCapabilityContains(agents, REQUEST_UNDERSTANDING_AGENT, INTENT_RECOGNITION_NODE,
+				EVIDENCE_RECALL_NODE, QUERY_ENHANCE_NODE);
+		assertCapabilityExcludes(agents, REQUEST_UNDERSTANDING_AGENT, USER_PROFILE_NODE);
+		assertCapabilityContains(agents, DATA_DISCOVERY_AGENT, SCHEMA_RECALL_NODE,
+				BUSINESS_DATA_DISCOVERY_NODE);
 		assertCapabilityContains(agents, DATA_PREPARATION_AGENT, SCHEMA_RECALL_NODE,
 				TABLE_RELATION_NODE, FEASIBILITY_ASSESSMENT_NODE);
 		assertCapabilityContains(agents, PLANNING_AGENT, PLANNER_NODE, PLAN_EXECUTOR_NODE);
@@ -72,6 +78,12 @@ class DataAnalysisAgentFactoryTest {
 		for (String nodeName : nodeNames) {
 			assertTrue(graph.contains(nodeName), () -> agentName + " should contain " + nodeName);
 		}
+	}
+
+	private void assertCapabilityExcludes(List<Agent> agents, String agentName, String nodeName) {
+		Agent agent = agents.stream().filter(candidate -> agentName.equals(candidate.name())).findFirst().orElseThrow();
+		String graph = agent.getGraph().getGraph(GraphRepresentation.Type.PLANTUML, agentName).content();
+		assertFalse(graph.contains(nodeName), () -> agentName + " should not contain disabled node " + nodeName);
 	}
 
 }
