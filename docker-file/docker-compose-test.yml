@@ -1,0 +1,330 @@
+# Full local test stack. It includes the application containers and every
+# dependency required by DataAgent and the bundled Langfuse deployment.
+
+name: data-agent-test
+
+x-langfuse-env-file: &langfuse-env-file
+  - ${LANGFUSE_ENV_FILE:-${HOME}/.local/share/langfuse-local/.env}
+
+x-langfuse-runtime-environment: &langfuse-runtime-environment
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  LANGFUSE_USE_AZURE_BLOB: "false"
+  LANGFUSE_USE_OCI_NATIVE_OBJECT_STORAGE: "false"
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+  LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+  LANGFUSE_S3_BATCH_EXPORT_BUCKET: langfuse
+  LANGFUSE_S3_BATCH_EXPORT_REGION: auto
+  LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: http://localhost:9090
+  LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_BATCH_EXPORT_PREFIX: exports/
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_TLS_ENABLED: "false"
+
+services:
+  # Original empty application MySQL definition (superseded by the migrated
+  # data-agent-mysql volume below).
+  # mysql:
+  #   image: mysql:8.0
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ${DATA_AGENT_MYSQL_PASSWORD:-root}
+  #     MYSQL_DATABASE: nl2sql_db
+  #   ports:
+  #     - "127.0.0.1:${DATA_AGENT_MYSQL_PORT:-13307}:3306"
+  #   volumes:
+  #     - data-agent-mysql-data:/var/lib/mysql
+  #   networks:
+  #     - data-agent-network
+  #   healthcheck:
+  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DATA_AGENT_MYSQL_PASSWORD:-root}"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 20
+  #     start_period: 20s
+
+  # MySQL migrated from the standalone data-agent-mysql container. The external
+  # volume is intentionally shared by dev and test; run only one stack at a time.
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "127.0.0.1:${DATA_AGENT_MYSQL_PORT:-13307}:3306"
+    volumes:
+      - data-agent-mysql-data:/var/lib/mysql
+    networks:
+      data-agent-network:
+        aliases:
+          - mysql-data
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # The former standalone sample MySQL is disabled because the migrated MySQL
+  # already contains product_db and is reachable through the mysql-data alias.
+  # mysql-data:
+  #   image: mysql:8.0
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ${SAMPLE_MYSQL_PASSWORD:-root}
+  #   command: --default-authentication-plugin=mysql_native_password
+  #   ports:
+  #     - "127.0.0.1:${SAMPLE_MYSQL_PORT:-13306}:3306"
+  #   volumes:
+  #     - sample-mysql-data:/var/lib/mysql
+  #     - ./config/mysql:/docker-entrypoint-initdb.d:ro
+  #   networks:
+  #     - data-agent-network
+  #   healthcheck:
+  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${SAMPLE_MYSQL_PASSWORD:-root}"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 20
+  #     start_period: 20s
+
+  postgres-data:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SAMPLE_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: data_warehouse
+    ports:
+      - "127.0.0.1:${SAMPLE_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - sample-postgres-data:/var/lib/postgresql/data
+      - ./config/postgres:/docker-entrypoint-initdb.d:ro
+    networks:
+      - data-agent-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d data_warehouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  docling-serve:
+    image: quay.io/docling-project/docling-serve:v1.21.0
+    restart: unless-stopped
+    environment:
+      DOCLING_SERVE_API_KEY: ${DOCLING_API_KEY:-data-agent-docling}
+      DOCLING_SERVE_ENABLE_UI: "false"
+      DOCLING_SERVE_MAX_FILE_SIZE: ${DOCLING_MAX_FILE_SIZE:-104857600}
+      DOCLING_SERVE_MAX_NUM_PAGES: ${DOCLING_MAX_NUM_PAGES:-500}
+    ports:
+      - "127.0.0.1:${DOCLING_PORT:-5001}:5001"
+    volumes:
+      - docling-models:/root/.cache
+    networks:
+      - data-agent-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/health', timeout=5)\""]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:4
+    restart: unless-stopped
+    depends_on: &langfuse-depends-on
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+    env_file: *langfuse-env-file
+    environment: *langfuse-runtime-environment
+    networks:
+      - data-agent-network
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:4
+    restart: unless-stopped
+    depends_on: *langfuse-depends-on
+    ports:
+      - "127.0.0.1:${LANGFUSE_PORT:-13000}:3000"
+    env_file: *langfuse-env-file
+    environment:
+      <<: *langfuse-runtime-environment
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+    networks:
+      - data-agent-network
+
+  langfuse-postgres:
+    image: postgres:17
+    restart: unless-stopped
+    env_file: *langfuse-env-file
+    ports:
+      - "127.0.0.1:${LANGFUSE_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+    networks:
+      data-agent-network:
+        aliases:
+          - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:25.12
+    restart: unless-stopped
+    user: "101:101"
+    env_file: *langfuse-env-file
+    ports:
+      - "127.0.0.1:${LANGFUSE_CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "127.0.0.1:${LANGFUSE_CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    networks:
+      data-agent-network:
+        aliases:
+          - clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  langfuse-minio:
+    image: cgr.dev/chainguard/minio
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    env_file: *langfuse-env-file
+    ports:
+      - "127.0.0.1:${LANGFUSE_MINIO_API_PORT:-9090}:9000"
+      - "127.0.0.1:${LANGFUSE_MINIO_CONSOLE_PORT:-9091}:9001"
+    volumes:
+      - langfuse-minio-data:/data
+    networks:
+      data-agent-network:
+        aliases:
+          - minio
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  langfuse-redis:
+    image: redis:7
+    restart: unless-stopped
+    env_file: *langfuse-env-file
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_AUTH\" --maxmemory-policy noeviction"]
+    ports:
+      - "127.0.0.1:${LANGFUSE_REDIS_PORT:-6379}:6379"
+    volumes:
+      - langfuse-redis-data:/data
+    networks:
+      data-agent-network:
+        aliases:
+          - redis
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_AUTH\" ping | grep PONG"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ..
+      dockerfile: ./docker-file/Dockerfile-backend
+      tags:
+        - saa-data-agent-backend:test
+    restart: "no"
+    environment:
+      DATA_AGENT_DATASOURCE_URL: jdbc:mysql://mysql:3306/saa_data_agent?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      DATA_AGENT_DATASOURCE_USERNAME: ${DATA_AGENT_MYSQL_USERNAME:-data_agent}
+      DATA_AGENT_DATASOURCE_PASSWORD: ${DATA_AGENT_MYSQL_PASSWORD:-data_agent}
+      DATA_AGENT_DATASOURCE_SQL_INIT: always
+      AI_DASHSCOPE_API_KEY: ${AI_DASHSCOPE_API_KEY:-}
+      DOCLING_ENABLED: "true"
+      DOCLING_BASE_URL: http://docling-serve:5001
+      DOCLING_API_KEY: ${DOCLING_API_KEY:-data-agent-docling}
+      LANGFUSE_ENABLED: "true"
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-dataagent-local}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-dataagent-local-20260731}
+    ports:
+      - "127.0.0.1:${DATA_AGENT_BACKEND_PORT:-8065}:8065"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres-data:
+        condition: service_healthy
+      docling-serve:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_started
+      langfuse-worker:
+        condition: service_started
+    networks:
+      - data-agent-network
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: ./docker-file/Dockerfile-frontend
+      tags:
+        - saa-data-agent-frontend:test
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DATA_AGENT_FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - data-agent-network
+
+volumes:
+  data-agent-mysql-data:
+    external: true
+    name: data-agent-mysql-data
+  sample-mysql-data:
+  sample-postgres-data:
+  docling-models:
+  langfuse-postgres-data:
+    external: true
+    name: langfuse-local_langfuse_postgres_data
+  langfuse-clickhouse-data:
+    external: true
+    name: langfuse-local_langfuse_clickhouse_data
+  langfuse-clickhouse-logs:
+    external: true
+    name: langfuse-local_langfuse_clickhouse_logs
+  langfuse-minio-data:
+    external: true
+    name: langfuse-local_langfuse_minio_data
+  langfuse-redis-data:
+    external: true
+    name: langfuse-local_langfuse_redis_data
+
+networks:
+  data-agent-network:
+    driver: bridge
