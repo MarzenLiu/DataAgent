@@ -67,6 +67,22 @@
     2.  **业务流程SOP**：帮助 Planner (规划节点) 理解业务流程，甚至更好地按你想要的步骤进行数据分析。例如你觉得Agent做的“销量预测“老是做不好，你们公司有自己的销量预测流程，第一步如何做，第二步如何....等等固定流程，此时你完全可以在文档写上 "如何进行销量预测的步骤”，直接指定销量预测的流程。 **强烈建议使用这个功能**。当然你也可以放到Q&A问答对里面，或者把多个问答对塞到一个文档里面再上传。
     3.  **行业报告**：帮助 Report Generator (报告生成节点) 在生成最终 HTML 报告时，增加行业洞察和背景知识，而不只是单纯罗列数据。
 
+##### Docling 结构化解析
+
+启用 Docling 后，PDF 与 XLSX 会优先通过独立的 Docling Serve 解析；服务不可用时默认回退到 Tika。
+
+```bash
+export DOCLING_ENABLED=true
+export DOCLING_BASE_URL=http://localhost:5001
+export DOCLING_API_KEY=your-key
+```
+
+- PDF：按阅读顺序映射正文，保留标题路径、页码、边界框、表格和图片描述；大型表格分块时会重复表头。
+- XLSX：按工作表和表格映射，保留工作表名、表格序号及行区间；大型工作表按行分块并重复表头。
+- XLS 等旧版二进制格式不属于 Docling 的 XLSX 输入格式，会继续使用原有 Tika 链路。
+
+使用 `docker-file/docker-compose.yml` 启动完整环境时，Docling Serve 会自动启用。单独运行后端时，Docling 默认关闭，以保持原有部署兼容性。
+
 #### B. 问答对/常见问题 (Q&A / FAQ) —— ⭐ 调优神器
 这是修正 Agent 错误行为最高效的方式（Few-Shot Learning）。
 

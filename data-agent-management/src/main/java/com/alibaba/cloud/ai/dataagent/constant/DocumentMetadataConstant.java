@@ -46,6 +46,32 @@ public final class DocumentMetadataConstant {
 	// 智能体的知识
 	public static final String AGENT_KNOWLEDGE = "agentKnowledge";
 
+	public static final String PARSER = "parser";
+
+	public static final String PARSER_VERSION = "parserVersion";
+
+	public static final String SOURCE_FILENAME = "sourceFilename";
+
+	public static final String ELEMENT_TYPE = "elementType";
+
+	public static final String SOURCE_ELEMENT_ID = "sourceElementId";
+
+	public static final String PAGE_NUMBER = "pageNumber";
+
+	public static final String BOUNDING_BOX = "boundingBox";
+
+	public static final String SECTION_PATH = "sectionPath";
+
+	public static final String SHEET_NAME = "sheetName";
+
+	public static final String TABLE_INDEX = "tableIndex";
+
+	public static final String ROW_START = "rowStart";
+
+	public static final String ROW_END = "rowEnd";
+
+	public static final String CHUNK_INDEX = "chunkIndex";
+
 	// businessTerm
 	public static final String BUSINESS_TERM = "businessTerm";
 

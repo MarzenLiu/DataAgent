@@ -58,6 +58,7 @@
     <commonmark.version>0.17.0</commonmark.version>
     <httpclient5.version>5.4.1</httpclient5.version>
     <commons-compress.version>1.27.1</commons-compress.version>
+    <docling-java.version>0.6.1</docling-java.version>
     <netty-resolver-dns-native-macos.version>4.1.114.Final</netty-resolver-dns-native-macos.version>
     <netty-transport-native-epoll.version>4.1.114.Final</netty-transport-native-epoll.version>
     <jsonschema.version>4.37.0</jsonschema.version>

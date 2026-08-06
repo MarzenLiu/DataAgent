@@ -288,6 +288,9 @@ public class EvidenceRecallNode implements NodeAction {
 		String knowledgeType = (String) metadata.get(DocumentMetadataConstant.CONCRETE_AGENT_KNOWLEDGE_TYPE);
 		String title = "";
 		String sourceFilename = "";
+		Object pageNumber = metadata.get(DocumentMetadataConstant.PAGE_NUMBER);
+		Object sheetName = metadata.get(DocumentMetadataConstant.SHEET_NAME);
+		Object sectionPath = metadata.get(DocumentMetadataConstant.SECTION_PATH);
 
 		log.debug("Processing {} type knowledge with id: {}", knowledgeType, knowledgeId);
 
@@ -296,7 +299,7 @@ public class EvidenceRecallNode implements NodeAction {
 				AgentKnowledge knowledge = agentKnowledgeMapper.selectById(knowledgeId);
 				if (knowledge != null) {
 					title = knowledge.getTitle();
-					sourceFilename = knowledge.getSourceFilename();
+					sourceFilename = knowledge.getSourceFilename() == null ? "" : knowledge.getSourceFilename();
 
 					log.debug("Successfully processed {} knowledge with title: {}, source file: {}", knowledgeType,
 							title, sourceFilename);
@@ -314,6 +317,15 @@ public class EvidenceRecallNode implements NodeAction {
 		String sourceInfo = title.isEmpty() ? "文档" : title;
 		if (!sourceFilename.isEmpty()) {
 			sourceInfo += "-" + sourceFilename;
+		}
+		if (pageNumber != null) {
+			sourceInfo += "，第" + pageNumber + "页";
+		}
+		if (sheetName != null) {
+			sourceInfo += "，工作表:" + sheetName;
+		}
+		if (sectionPath != null) {
+			sourceInfo += "，章节:" + sectionPath;
 		}
 
 		result.append(index + 1).append(". [来源: ");

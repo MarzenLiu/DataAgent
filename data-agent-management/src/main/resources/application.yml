@@ -59,6 +59,20 @@ spring:
             endpoint: ${OSS_ENDPOINT:}
             bucket-name: ${OSS_BUCKET_NAME:}
             custom-domain: ${OSS_CUSTOM_DOMAIN:}
+        docling:
+          enabled: ${DOCLING_ENABLED:false}
+          base-url: ${DOCLING_BASE_URL:http://localhost:5001}
+          api-key: ${DOCLING_API_KEY:}
+          connect-timeout: ${DOCLING_CONNECT_TIMEOUT:5s}
+          read-timeout: ${DOCLING_READ_TIMEOUT:10m}
+          async-poll-interval: ${DOCLING_POLL_INTERVAL:2s}
+          async-timeout: ${DOCLING_ASYNC_TIMEOUT:15m}
+          fallback-to-tika: ${DOCLING_FALLBACK_TO_TIKA:true}
+          pdf:
+            ocr-enabled: ${DOCLING_PDF_OCR_ENABLED:true}
+            max-table-rows-per-chunk: ${DOCLING_PDF_TABLE_ROWS:20}
+          excel:
+            max-table-rows-per-chunk: ${DOCLING_EXCEL_TABLE_ROWS:50}
         max-sql-retry-count: 10
         # Langfuse 可观测性配置
         langfuse:

@@ -45,6 +45,9 @@ services:
       - DATA_AGENT_DATASOURCE_PASSWORD=root
       - DATA_AGENT_DATASOURCE_SQL_INIT=always
       - AI_DASHSCOPE_API_KEY=${AI_DASHSCOPE_API_KEY}
+      - DOCLING_ENABLED=true
+      - DOCLING_BASE_URL=http://docling-serve:5001
+      - DOCLING_API_KEY=${DOCLING_API_KEY:-data-agent-docling}
     ports:
       - "8065:8065"
     depends_on:
@@ -54,9 +57,32 @@ services:
         condition: service_healthy
       postgres-data:
         condition: service_healthy
+      docling-serve:
+        condition: service_healthy
     networks:
       - app-network
     restart: no
+
+  # PDF/XLSX结构化解析服务
+  docling-serve:
+    image: quay.io/docling-project/docling-serve:v1.21.0
+    container_name: data-agent-docling
+    environment:
+      - DOCLING_SERVE_API_KEY=${DOCLING_API_KEY:-data-agent-docling}
+      - DOCLING_SERVE_ENABLE_UI=false
+      - DOCLING_SERVE_MAX_FILE_SIZE=${DOCLING_MAX_FILE_SIZE:-104857600}
+      - DOCLING_SERVE_MAX_NUM_PAGES=${DOCLING_MAX_NUM_PAGES:-500}
+    volumes:
+      - docling-models:/root/.cache
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/health', timeout=5)\"" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
 
   # Vue前端服务
   frontend:
@@ -114,6 +140,7 @@ services:
 
 volumes:
   data-agent-mysql-inner-data:
+  docling-models:
 
 networks:
   app-network:

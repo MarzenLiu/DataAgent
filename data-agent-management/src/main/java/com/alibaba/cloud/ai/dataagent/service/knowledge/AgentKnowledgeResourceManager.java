@@ -21,11 +21,13 @@ import com.alibaba.cloud.ai.dataagent.enums.KnowledgeType;
 import com.alibaba.cloud.ai.dataagent.util.DocumentConverterUtil;
 import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.service.file.FileStorageService;
+import com.alibaba.cloud.ai.dataagent.service.knowledge.docling.DoclingDocumentReader;
 import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TextSplitter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -45,11 +47,20 @@ public class AgentKnowledgeResourceManager {
 
 	private final AgentVectorStoreService agentVectorStoreService;
 
+	private final DoclingDocumentReader doclingDocumentReader;
+
+	@Autowired
 	public AgentKnowledgeResourceManager(TextSplitterFactory textSplitterFactory, FileStorageService fileStorageService,
-			AgentVectorStoreService agentVectorStoreService) {
+			AgentVectorStoreService agentVectorStoreService, DoclingDocumentReader doclingDocumentReader) {
 		this.textSplitterFactory = textSplitterFactory;
 		this.fileStorageService = fileStorageService;
 		this.agentVectorStoreService = agentVectorStoreService;
+		this.doclingDocumentReader = doclingDocumentReader;
+	}
+
+	public AgentKnowledgeResourceManager(TextSplitterFactory textSplitterFactory, FileStorageService fileStorageService,
+			AgentVectorStoreService agentVectorStoreService) {
+		this(textSplitterFactory, fileStorageService, agentVectorStoreService, null);
 	}
 
 	public void doEmbedingToVectorStore(AgentKnowledge agentKnowledge) throws Exception {
@@ -73,7 +84,7 @@ public class AgentKnowledgeResourceManager {
 	private void processDocumentKnowledge(AgentKnowledge knowledge) {
 
 		// 处理文档
-		List<Document> documents = getAndSplitDocument(knowledge.getFilePath(), knowledge.getSplitterType());
+		List<Document> documents = getAndSplitDocument(knowledge);
 		if (documents == null || documents.isEmpty()) {
 			log.error("No documents extracted from file: knowledgeId={}, filePath={}", knowledge.getId(),
 					knowledge.getFilePath());
@@ -99,17 +110,31 @@ public class AgentKnowledgeResourceManager {
 		return metadata;
 	}
 
-	private List<Document> getAndSplitDocument(String filePath, String splitterType) {
+	private List<Document> getAndSplitDocument(AgentKnowledge knowledge) {
 		// 使用FileStorageService获取文件资源对象
-		Resource resource = fileStorageService.getFileResource(filePath);
+		Resource resource = fileStorageService.getFileResource(knowledge.getFilePath());
+
+		if (doclingDocumentReader != null
+				&& doclingDocumentReader.supports(knowledge.getSourceFilename(), knowledge.getFileType())) {
+			try {
+				return doclingDocumentReader.read(resource, knowledge.getSourceFilename(), knowledge.getFileType(),
+						knowledge.getSplitterType());
+			}
+			catch (RuntimeException ex) {
+				if (!doclingDocumentReader.fallbackToTika()) {
+					throw ex;
+				}
+				log.warn("Docling parsing failed; falling back to Tika. filePath={}", knowledge.getFilePath(), ex);
+			}
+		}
 
 		// 使用TikaDocumentReader读取文件
 		TikaDocumentReader tikaDocumentReader = new TikaDocumentReader(resource);
 		List<Document> documents = tikaDocumentReader.read();
 
 		// 根据splitterType获取对应的分块器
-		TextSplitter splitter = textSplitterFactory.getSplitter(splitterType);
-		log.info("Using splitter type: {} for document splitting", splitterType);
+		TextSplitter splitter = textSplitterFactory.getSplitter(knowledge.getSplitterType());
+		log.info("Using splitter type: {} for document splitting", knowledge.getSplitterType());
 
 		return splitter.apply(documents);
 	}

@@ -18,12 +18,17 @@ package com.alibaba.cloud.ai.dataagent.service.knowledge;
 import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.enums.KnowledgeType;
 import com.alibaba.cloud.ai.dataagent.service.file.FileStorageService;
+import com.alibaba.cloud.ai.dataagent.service.knowledge.docling.DoclingDocumentReader;
 import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.document.Document;
+import org.springframework.core.io.ByteArrayResource;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -43,9 +48,36 @@ class AgentKnowledgeResourceManagerTest {
 	@Mock
 	private AgentVectorStoreService agentVectorStoreService;
 
+	@Mock
+	private DoclingDocumentReader doclingDocumentReader;
+
 	@BeforeEach
 	void setUp() {
-		manager = new AgentKnowledgeResourceManager(textSplitterFactory, fileStorageService, agentVectorStoreService);
+		manager = new AgentKnowledgeResourceManager(textSplitterFactory, fileStorageService, agentVectorStoreService,
+				doclingDocumentReader);
+	}
+
+	@Test
+	void documentKnowledgeUsesDoclingForSupportedPdf() throws Exception {
+		AgentKnowledge knowledge = new AgentKnowledge();
+		knowledge.setId(10);
+		knowledge.setAgentId(1);
+		knowledge.setType(KnowledgeType.DOCUMENT);
+		knowledge.setFilePath("uploads/report.pdf");
+		knowledge.setSourceFilename("report.pdf");
+		knowledge.setFileType("pdf");
+		knowledge.setSplitterType("token");
+		ByteArrayResource resource = new ByteArrayResource("pdf".getBytes());
+		Document parsed = new Document("structured pdf content");
+		when(fileStorageService.getFileResource("uploads/report.pdf")).thenReturn(resource);
+		when(doclingDocumentReader.supports("report.pdf", "pdf")).thenReturn(true);
+		when(doclingDocumentReader.read(resource, "report.pdf", "pdf", "token")).thenReturn(List.of(parsed));
+
+		manager.doEmbedingToVectorStore(knowledge);
+
+		verify(doclingDocumentReader).read(resource, "report.pdf", "pdf", "token");
+		verify(agentVectorStoreService).replaceDocumentsByMetadata(anyMap(), argThat(documents -> documents.size() == 1
+				&& "structured pdf content".equals(documents.get(0).getText())));
 	}
 
 	@Test
