@@ -29,6 +29,7 @@ import com.alibaba.cloud.ai.dataagent.common.TestFixtures;
 import com.alibaba.cloud.ai.dataagent.dto.prompt.QueryEnhanceOutputDTO;
 import com.alibaba.cloud.ai.dataagent.service.llm.LlmService;
 import com.alibaba.cloud.ai.dataagent.service.prompt.UserPromptService;
+import com.alibaba.cloud.ai.dataagent.service.report.ReportArtifactService;
 import com.alibaba.cloud.ai.dataagent.util.ChatResponseUtil;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
@@ -51,11 +52,14 @@ class ReportGeneratorNodeTest {
 	@Mock
 	private UserPromptService promptConfigService;
 
+	@Mock
+	private ReportArtifactService reportArtifactService;
+
 	private ReportGeneratorNode reportGeneratorNode;
 
 	@BeforeEach
 	void setUp() {
-		reportGeneratorNode = new ReportGeneratorNode(llmService, promptConfigService);
+		reportGeneratorNode = new ReportGeneratorNode(llmService, promptConfigService, reportArtifactService);
 	}
 
 	private OverAllState createTestState() {
@@ -66,6 +70,7 @@ class ReportGeneratorNodeTest {
 		state.registerKeyAndStrategy(SQL_EXECUTE_NODE_OUTPUT, new ReplaceStrategy());
 		state.registerKeyAndStrategy(AGENT_ID, new ReplaceStrategy());
 		state.registerKeyAndStrategy(RESULT, new ReplaceStrategy());
+		state.registerKeyAndStrategy(CONVERSATION_ID, new ReplaceStrategy());
 		return state;
 	}
 
@@ -78,7 +83,7 @@ class ReportGeneratorNodeTest {
 		executionResults.put("step_1", "[{\"id\":1,\"name\":\"张三\"},{\"id\":2,\"name\":\"李四\"}]");
 
 		state.updateState(Map.of(PLANNER_NODE_OUTPUT, planJson, QUERY_ENHANCE_NODE_OUTPUT, dto, PLAN_CURRENT_STEP, 2,
-				SQL_EXECUTE_NODE_OUTPUT, executionResults, AGENT_ID, "1"));
+				SQL_EXECUTE_NODE_OUTPUT, executionResults, AGENT_ID, "1", CONVERSATION_ID, "conversation-1"));
 	}
 
 	@Test
@@ -88,14 +93,17 @@ class ReportGeneratorNodeTest {
 
 		when(promptConfigService.getOptimizationConfigs(eq("report-generator"), eq(1L)))
 			.thenReturn(Collections.emptyList());
-		when(llmService.callUser(anyString()))
+		when(llmService.callUserObserved(eq("report-generator.compose"), anyString()))
 			.thenReturn(Flux.just(ChatResponseUtil.createPureResponse("<h1>用户数据分析报告</h1>")));
 
 		Map<String, Object> result = reportGeneratorNode.apply(state);
 
 		assertNotNull(result);
 		assertTrue(result.containsKey(RESULT));
-		verify(llmService).callUser(anyString());
+		((Flux<?>) result.get(RESULT)).blockLast();
+		verify(llmService).callUserObserved(eq("report-generator.compose"), anyString());
+		verify(reportArtifactService).save(eq("conversation-1"), eq(1L), eq("查询用户数据"),
+				contains("<h1>用户数据分析报告</h1>"));
 	}
 
 	@Test
@@ -110,7 +118,8 @@ class ReportGeneratorNodeTest {
 
 		when(promptConfigService.getOptimizationConfigs(eq("report-generator"), eq(2L)))
 			.thenReturn(Collections.emptyList());
-		when(llmService.callUser(anyString())).thenReturn(Flux.just(ChatResponseUtil.createPureResponse("暂无数据可分析")));
+		when(llmService.callUserObserved(eq("report-generator.compose"), anyString()))
+			.thenReturn(Flux.just(ChatResponseUtil.createPureResponse("暂无数据可分析")));
 
 		Map<String, Object> result = reportGeneratorNode.apply(state);
 
@@ -135,7 +144,7 @@ class ReportGeneratorNodeTest {
 
 		when(promptConfigService.getOptimizationConfigs(eq("report-generator"), eq(3L)))
 			.thenReturn(Collections.emptyList());
-		when(llmService.callUser(anyString()))
+		when(llmService.callUserObserved(eq("report-generator.compose"), anyString()))
 			.thenReturn(Flux.just(ChatResponseUtil.createPureResponse("<h1>综合报告</h1>")));
 
 		Map<String, Object> result = reportGeneratorNode.apply(state);
@@ -151,7 +160,8 @@ class ReportGeneratorNodeTest {
 
 		when(promptConfigService.getOptimizationConfigs(eq("report-generator"), eq(1L)))
 			.thenReturn(Collections.emptyList());
-		when(llmService.callUser(anyString())).thenThrow(new RuntimeException("LLM unavailable"));
+		when(llmService.callUserObserved(eq("report-generator.compose"), anyString()))
+			.thenThrow(new RuntimeException("LLM unavailable"));
 
 		assertThrows(RuntimeException.class, () -> reportGeneratorNode.apply(state));
 	}
@@ -168,7 +178,8 @@ class ReportGeneratorNodeTest {
 
 		when(promptConfigService.getOptimizationConfigs(eq("report-generator"), isNull()))
 			.thenReturn(Collections.emptyList());
-		when(llmService.callUser(anyString())).thenReturn(Flux.just(ChatResponseUtil.createPureResponse("report")));
+		when(llmService.callUserObserved(eq("report-generator.compose"), anyString()))
+			.thenReturn(Flux.just(ChatResponseUtil.createPureResponse("report")));
 
 		Map<String, Object> result = reportGeneratorNode.apply(state);
 
@@ -214,7 +225,7 @@ class ReportGeneratorNodeTest {
 
 		when(promptConfigService.getOptimizationConfigs(eq("report-generator"), eq(4L)))
 			.thenReturn(Collections.emptyList());
-		when(llmService.callUser(anyString()))
+		when(llmService.callUserObserved(eq("report-generator.compose"), anyString()))
 			.thenReturn(Flux.just(ChatResponseUtil.createPureResponse("<p>分析完成</p>")));
 
 		Map<String, Object> result = reportGeneratorNode.apply(state);

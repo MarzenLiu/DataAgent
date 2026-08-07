@@ -50,8 +50,7 @@ export interface ChatRequestOptions {
 	pageSize: number;
 }
 
-export const useChatStore = defineStore('chat',
-	() => {
+export const useChatStore = defineStore('chat', () => {
 	// ── Session list state ──────────────────────────────────────────────────────
 	const sessions = ref<ExtendedChatSession[]>([]);
 	const currentSession = ref<ChatSession | null>(null);
@@ -426,7 +425,10 @@ export const useChatStore = defineStore('chat',
 				}
 				const currentBlock = sessionState.nodeBlocks[currentBlockIndex];
 
-				if (response.nodeName === 'ReportGeneratorNode') {
+				if (
+					response.nodeName === 'ReportGeneratorNode' ||
+					response.nodeName === 'ReportRevisionNode'
+				) {
 					if (response.textType === 'HTML') {
 						sessionState.htmlReportContent += response.text;
 						sessionState.htmlReportSize = sessionState.htmlReportContent.length;

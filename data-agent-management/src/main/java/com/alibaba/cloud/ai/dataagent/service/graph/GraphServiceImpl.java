@@ -16,6 +16,8 @@
 package com.alibaba.cloud.ai.dataagent.service.graph;
 
 import com.alibaba.cloud.ai.dataagent.service.langfuse.LangfuseService;
+import com.alibaba.cloud.ai.dataagent.entity.ReportArtifact;
+import com.alibaba.cloud.ai.dataagent.service.report.ReportArtifactService;
 import com.alibaba.cloud.ai.dataagent.enums.GraphEventType;
 import com.alibaba.cloud.ai.dataagent.enums.TextType;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.DataAnalysisSupervisorAgent;
@@ -31,17 +33,20 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,16 +70,19 @@ public class GraphServiceImpl implements GraphService {
 
 	private final LangfuseService langfuseReporter;
 
+	private final ReportArtifactService reportArtifactService;
+
 	public GraphServiceImpl(DataAnalysisSupervisorAgent supervisorAgent, CompileConfig compileConfig,
 			BaseCheckpointSaver checkpointSaver,
 			ExecutorService executorService, MultiTurnContextManager multiTurnContextManager,
-			LangfuseService langfuseReporter) {
+			LangfuseService langfuseReporter, ReportArtifactService reportArtifactService) {
 		supervisorAgent.configure(compileConfig);
 		this.supervisorAgent = supervisorAgent;
 		this.checkpointSaver = checkpointSaver;
 		this.executor = executorService;
 		this.multiTurnContextManager = multiTurnContextManager;
 		this.langfuseReporter = langfuseReporter;
+		this.reportArtifactService = reportArtifactService;
 	}
 
 	@Override
@@ -186,11 +194,19 @@ public class GraphServiceImpl implements GraphService {
 
 		String multiTurnContext = multiTurnContextManager.buildContext(conversationId);
 		multiTurnContextManager.beginTurn(conversationId, query);
-		Flux<NodeOutput> nodeOutputFlux = streamSupervisor(
-				Map.of(IS_ONLY_NL2SQL, nl2sqlOnly, INPUT_KEY, query, AGENT_ID, agentId, CONVERSATION_ID, conversationId,
-						HUMAN_REVIEW_ENABLED, humanReviewEnabled, MULTI_TURN_CONTEXT, multiTurnContext, TRACE_THREAD_ID,
-						threadId, "messages", initialSupervisorMessages(query)),
-				RunnableConfig.builder().threadId(threadId).build());
+		RunnableConfig runConfig = RunnableConfig.builder().threadId(threadId).build();
+		Flux<NodeOutput> nodeOutputFlux = loadLatestReport(graphRequest).flatMapMany(latestReport -> {
+			Map<String, Object> initialState = new HashMap<>();
+			initialState.put(IS_ONLY_NL2SQL, nl2sqlOnly);
+			initialState.put(INPUT_KEY, query);
+			initialState.put(AGENT_ID, agentId);
+			initialState.put(CONVERSATION_ID, conversationId);
+			initialState.put(HUMAN_REVIEW_ENABLED, humanReviewEnabled);
+			initialState.put(MULTI_TURN_CONTEXT, multiTurnContext);
+			initialState.put(TRACE_THREAD_ID, threadId);
+			initialState.put("messages", initialSupervisorMessages(query, latestReport.orElse(null)));
+			return streamSupervisor(initialState, runConfig);
+		});
 		subscribeToFlux(context, nodeOutputFlux, graphRequest, agentId, threadId);
 	}
 
@@ -232,11 +248,10 @@ public class GraphServiceImpl implements GraphService {
 		catch (Exception e) {
 			throw new IllegalStateException("Failed to update graph state for human feedback", e);
 		}
-		RunnableConfig resumeConfig = RunnableConfig.builder(updatedConfig)
-			.addMetadata(RunnableConfig.HUMAN_FEEDBACK_METADATA_KEY, feedbackData)
-			.build();
-
-		Flux<NodeOutput> nodeOutputFlux = streamSupervisor(null, resumeConfig);
+		// updateState returns the persisted checkpoint id, which is sufficient for the
+		// parent graph to resume. Do not propagate HUMAN_FEEDBACK metadata: every fresh
+		// capability subgraph would otherwise misinterpret it as its own resume signal.
+		Flux<NodeOutput> nodeOutputFlux = streamSupervisor(null, updatedConfig);
 		subscribeToFlux(context, nodeOutputFlux, graphRequest, agentId, threadId);
 	}
 
@@ -447,13 +462,39 @@ public class GraphServiceImpl implements GraphService {
 		return List.of(new UserMessage(query));
 	}
 
+	private List<Message> initialSupervisorMessages(String query, ReportArtifact latestReport) {
+		if (latestReport == null) {
+			return initialSupervisorMessages(query);
+		}
+		String reportContext = """
+				DATA_AGENT_CONTEXT kind=LATEST_REPORT
+				A report generated before the current request is available for revision.
+				<source_query>%s</source_query>
+				END_DATA_AGENT_CONTEXT
+				""".formatted(StringUtils.hasText(latestReport.getSourceQuery()) ? latestReport.getSourceQuery() : "(unknown)");
+		return List.of(new SystemMessage(reportContext), new UserMessage(query));
+	}
+
+	private Mono<Optional<ReportArtifact>> loadLatestReport(GraphRequest request) {
+		if (request.isNl2sqlOnly()) {
+			return Mono.just(Optional.empty());
+		}
+		return Mono.fromCallable(() -> Long.valueOf(request.getAgentId()))
+			.map(agentId -> reportArtifactService.findLatest(request.getConversationId(), agentId))
+			.onErrorResume(ex -> {
+				log.warn("Unable to load report context for conversation {}; routing without it",
+						request.getConversationId(), ex);
+				return Mono.just(Optional.empty());
+			});
+	}
+
 	private boolean isAwaitingHumanFeedback(GraphRequest request, RunnableConfig config) {
 		if (!request.isHumanFeedback()) {
 			return false;
 		}
 		try {
 			return checkpointSaver.get(config)
-				.map(checkpoint -> HUMAN_FEEDBACK_NODE.equals(checkpoint.getNextNodeId()))
+				.map(checkpoint -> HUMAN_FEEDBACK_INTERRUPT_NODE.equals(checkpoint.getNextNodeId()))
 				.orElse(false);
 		}
 		catch (Exception e) {

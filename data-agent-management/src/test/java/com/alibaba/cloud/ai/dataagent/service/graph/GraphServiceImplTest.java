@@ -19,6 +19,8 @@ import com.alibaba.cloud.ai.dataagent.dto.GraphRequest;
 import com.alibaba.cloud.ai.dataagent.enums.GraphEventType;
 import com.alibaba.cloud.ai.dataagent.service.graph.Context.MultiTurnContextManager;
 import com.alibaba.cloud.ai.dataagent.service.langfuse.LangfuseService;
+import com.alibaba.cloud.ai.dataagent.entity.ReportArtifact;
+import com.alibaba.cloud.ai.dataagent.service.report.ReportArtifactService;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.DataAnalysisSupervisorAgent;
 import com.alibaba.cloud.ai.dataagent.vo.GraphNodeResponse;
 import com.alibaba.cloud.ai.graph.CompileConfig;
@@ -38,6 +40,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.http.codec.ServerSentEvent;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -51,6 +55,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static com.alibaba.cloud.ai.dataagent.constant.Constant.HUMAN_FEEDBACK_INTERRUPT_NODE;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -69,6 +74,9 @@ class GraphServiceImplTest {
 	private LangfuseService langfuseReporter;
 
 	@Mock
+	private ReportArtifactService reportArtifactService;
+
+	@Mock
 	private BaseCheckpointSaver checkpointSaver;
 
 	@Mock
@@ -84,11 +92,94 @@ class GraphServiceImplTest {
 
 		CompileConfig compileConfig = CompileConfig.builder().build();
 		graphService = new GraphServiceImpl(supervisorAgent, compileConfig, checkpointSaver, executor,
-				multiTurnContextManager, langfuseReporter);
+				multiTurnContextManager, langfuseReporter, reportArtifactService);
 
 		when(langfuseReporter.startLLMSpan(anyString(), any())).thenReturn(mockSpan);
 		when(mockSpan.isRecording()).thenReturn(true);
 		when(multiTurnContextManager.buildContext(anyString())).thenReturn("(无)");
+	}
+
+	@Test
+	void graphStreamProcess_existingReport_isProvidedToUnifiedRouter() throws Exception {
+		GraphRequest request = GraphRequest.builder()
+			.agentId("1")
+			.conversationId("conversation-1")
+			.query("把报告精简到500字")
+			.build();
+		ReportArtifact artifact = ReportArtifact.builder().sourceQuery("original query").content("old report").build();
+		when(reportArtifactService.findLatest("conversation-1", 1L)).thenReturn(Optional.of(artifact));
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+
+		graphService.graphStreamProcess(Sinks.many().multicast().onBackpressureBuffer(), request);
+
+		var inputCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+		verify(supervisorAgent, timeout(2000)).stream(inputCaptor.capture(), any(RunnableConfig.class));
+		@SuppressWarnings("unchecked")
+		List<Message> messages = (List<Message>) inputCaptor.getValue().get("messages");
+		assertEquals(2, messages.size());
+		assertEquals(MessageType.SYSTEM, messages.get(0).getMessageType());
+		assertTrue(messages.get(0).getText().contains("DATA_AGENT_CONTEXT kind=LATEST_REPORT"));
+		assertTrue(messages.get(0).getText().contains("original query"));
+		assertFalse(messages.get(0).getText().contains("old report"));
+		assertEquals(MessageType.USER, messages.get(1).getMessageType());
+		assertEquals(request.getQuery(), messages.get(1).getText());
+	}
+
+	@Test
+	void graphStreamProcess_revisionWithoutArtifact_usesFullAnalysisFlow() throws Exception {
+		GraphRequest request = GraphRequest.builder()
+			.agentId("1")
+			.conversationId("conversation-1")
+			.query("润色报告")
+			.build();
+		when(reportArtifactService.findLatest("conversation-1", 1L)).thenReturn(Optional.empty());
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+
+		graphService.graphStreamProcess(Sinks.many().multicast().onBackpressureBuffer(), request);
+
+		var inputCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+		verify(supervisorAgent, timeout(2000)).stream(inputCaptor.capture(), any(RunnableConfig.class));
+		@SuppressWarnings("unchecked")
+		List<Message> messages = (List<Message>) inputCaptor.getValue().get("messages");
+		assertEquals(1, messages.size());
+		assertEquals(request.getQuery(), messages.get(0).getText());
+	}
+
+	@Test
+	void graphStreamProcess_newAnalysisWithExistingReport_stillUsesUnifiedRouter() throws Exception {
+		GraphRequest request = GraphRequest.builder()
+			.agentId("1")
+			.conversationId("conversation-1")
+			.query("重写报告，并增加华南对比")
+			.build();
+		ReportArtifact artifact = ReportArtifact.builder().content("old report").build();
+		when(reportArtifactService.findLatest("conversation-1", 1L)).thenReturn(Optional.of(artifact));
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+
+		graphService.graphStreamProcess(Sinks.many().multicast().onBackpressureBuffer(), request);
+
+		verify(supervisorAgent, timeout(2000)).stream(anyMap(), any(RunnableConfig.class));
+	}
+
+	@Test
+	void graphStreamProcess_reportContextFailure_routesWithoutContext() throws Exception {
+		GraphRequest request = GraphRequest.builder()
+			.agentId("1")
+			.conversationId("conversation-1")
+			.query("调整一下上面的结论")
+			.build();
+		when(reportArtifactService.findLatest("conversation-1", 1L))
+			.thenThrow(new IllegalStateException("artifact unavailable"));
+		when(supervisorAgent.stream(anyMap(), any(RunnableConfig.class))).thenReturn(Flux.empty());
+
+		graphService.graphStreamProcess(Sinks.many().multicast().onBackpressureBuffer(), request);
+
+		var inputCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+		verify(supervisorAgent, timeout(2000)).stream(inputCaptor.capture(), any(RunnableConfig.class));
+		@SuppressWarnings("unchecked")
+		List<Message> messages = (List<Message>) inputCaptor.getValue().get("messages");
+		assertEquals(1, messages.size());
+		assertEquals(request.getQuery(), messages.get(0).getText());
 	}
 
 	@AfterEach
@@ -175,7 +266,10 @@ class GraphServiceImplTest {
 			.humanFeedback(true)
 			.humanFeedbackContent("approve")
 			.build();
-		RunnableConfig updatedConfig = RunnableConfig.builder().threadId("interrupted-run").build();
+		RunnableConfig updatedConfig = RunnableConfig.builder()
+			.threadId("interrupted-run")
+			.checkPointId("checkpoint-1")
+			.build();
 		when(supervisorAgent.updateState(any(RunnableConfig.class), anyMap())).thenReturn(updatedConfig);
 		when(supervisorAgent.stream(org.mockito.ArgumentMatchers.<Map<String, Object>>isNull(),
 				any(RunnableConfig.class)))
@@ -185,7 +279,12 @@ class GraphServiceImplTest {
 
 		var configCaptor = org.mockito.ArgumentCaptor.forClass(RunnableConfig.class);
 		verify(supervisorAgent).updateState(configCaptor.capture(), anyMap());
+		var resumeConfigCaptor = org.mockito.ArgumentCaptor.forClass(RunnableConfig.class);
+		verify(supervisorAgent).stream(org.mockito.ArgumentMatchers.<Map<String, Object>>isNull(),
+				resumeConfigCaptor.capture());
 		assertEquals("interrupted-run", configCaptor.getValue().threadId().orElseThrow());
+		assertSame(updatedConfig, resumeConfigCaptor.getValue());
+		assertTrue(resumeConfigCaptor.getValue().metadata(RunnableConfig.HUMAN_FEEDBACK_METADATA_KEY).isEmpty());
 		assertEquals("interrupted-run", request.getThreadId());
 	}
 
@@ -193,7 +292,7 @@ class GraphServiceImplTest {
 	void graphStreamProcess_interruptedForHumanFeedback_emitsRequiredEventAndRetainsCheckpoint() throws Exception {
 		Checkpoint checkpoint = Checkpoint.builder()
 			.nodeId("PLANNER_NODE")
-			.nextNodeId("HUMAN_FEEDBACK_NODE")
+			.nextNodeId(HUMAN_FEEDBACK_INTERRUPT_NODE)
 			.state(java.util.Map.of())
 			.build();
 		when(checkpointSaver.get(any(RunnableConfig.class))).thenReturn(Optional.of(checkpoint));
@@ -254,7 +353,7 @@ class GraphServiceImplTest {
 	void graphStreamProcess_rejectedFeedbackInterruptedAgain_emitsRequiredEventAndRetainsCheckpoint() throws Exception {
 		Checkpoint checkpoint = Checkpoint.builder()
 			.nodeId("PLANNER_NODE")
-			.nextNodeId("HUMAN_FEEDBACK_NODE")
+			.nextNodeId(HUMAN_FEEDBACK_INTERRUPT_NODE)
 			.state(java.util.Map.of())
 			.build();
 		when(checkpointSaver.get(any(RunnableConfig.class))).thenReturn(Optional.of(checkpoint));

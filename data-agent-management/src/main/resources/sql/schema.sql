@@ -222,6 +222,18 @@ CREATE TABLE IF NOT EXISTS chat_message (
   FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
 ) ENGINE = InnoDB COMMENT = '聊天消息表';
 
+-- 报告产物表：保存每次报告版本，供同一会话的后续微调复用
+CREATE TABLE IF NOT EXISTS report_artifact (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  conversation_id VARCHAR(36) NOT NULL COMMENT '稳定的会话ID',
+  agent_id BIGINT NOT NULL COMMENT '生成报告的智能体ID',
+  source_query TEXT COMMENT '生成或修改该版本的用户请求',
+  content MEDIUMTEXT NOT NULL COMMENT 'Markdown报告内容',
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  INDEX idx_report_artifact_conversation_agent (conversation_id, agent_id, id)
+) ENGINE = InnoDB COMMENT = '会话报告版本表';
+
 -- 用户Prompt配置表
 CREATE TABLE IF NOT EXISTS user_prompt_config (
   id VARCHAR(36) NOT NULL COMMENT '配置ID（UUID）',

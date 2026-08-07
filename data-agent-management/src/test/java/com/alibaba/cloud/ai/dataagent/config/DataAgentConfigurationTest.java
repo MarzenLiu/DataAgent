@@ -39,7 +39,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 
-import static com.alibaba.cloud.ai.dataagent.constant.Constant.HUMAN_FEEDBACK_NODE;
+import static com.alibaba.cloud.ai.dataagent.constant.Constant.HUMAN_FEEDBACK_INTERRUPT_NODE;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DataAgentConfigurationTest {
@@ -55,6 +55,7 @@ class DataAgentConfigurationTest {
 
 		assertThat(prompt).contains("configured_agent", "Configured responsibility.",
 				"configured work is pending.");
+		assertThat(prompt).contains("report_revision_agent", "DATA_AGENT_CONTEXT", "If uncertain");
 	}
 
 	@Test
@@ -102,14 +103,14 @@ class DataAgentConfigurationTest {
 		Checkpoint checkpoint = Checkpoint.builder()
 			.id(UUID.randomUUID().toString())
 			.nodeId("planner")
-			.nextNodeId(HUMAN_FEEDBACK_NODE)
+			.nextNodeId(HUMAN_FEEDBACK_INTERRUPT_NODE)
 			.state(Map.of("question", "analyse orders"))
 			.build();
 
 		checkpointSaver.put(runnableConfig, checkpoint);
 
 		assertThat(checkpointSaver).isInstanceOf(MemorySaver.class);
-		assertThat(compileConfig.interruptsBefore()).contains(HUMAN_FEEDBACK_NODE);
+		assertThat(compileConfig.interruptsBefore()).contains(HUMAN_FEEDBACK_INTERRUPT_NODE);
 		assertThat(checkpointSaver.get(runnableConfig)).isPresent();
 		checkpointSaver.release(runnableConfig);
 		assertThat(checkpointSaver.get(runnableConfig)).isEmpty();

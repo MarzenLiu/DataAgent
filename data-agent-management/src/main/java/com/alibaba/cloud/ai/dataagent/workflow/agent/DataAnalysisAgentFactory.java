@@ -23,6 +23,7 @@ import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.HumanFeedbackAge
 import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.PlanningAgent;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.PythonAgent;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.ReportAgent;
+import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.ReportRevisionAgent;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.RequestUnderstandingAgent;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.SqlAgent;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
@@ -57,6 +58,7 @@ public final class DataAnalysisAgentFactory {
 				new SqlAgent(nodeBeanUtil, keyStrategyFactory),
 				new PythonAgent(nodeBeanUtil, codeExecutorProperties, keyStrategyFactory),
 				new ReportAgent(nodeBeanUtil, keyStrategyFactory),
+				new ReportRevisionAgent(nodeBeanUtil, keyStrategyFactory),
 				new HumanFeedbackAgent(nodeBeanUtil, keyStrategyFactory));
 	}
 

@@ -53,7 +53,7 @@ class DataAnalysisAgentFactoryTest {
 		List<Agent> agents = new DataAnalysisAgentFactory(nodeBeanUtil,
 				new CodeExecutorProperties(), keyStrategyFactory).createAgents();
 
-		assertEquals(8, agents.size());
+		assertEquals(9, agents.size());
 		assertTrue(agents.stream().allMatch(AgentDescriptor.class::isInstance));
 		assertCapabilityContains(agents, REQUEST_UNDERSTANDING_AGENT, INTENT_RECOGNITION_NODE,
 				EVIDENCE_RECALL_NODE, QUERY_ENHANCE_NODE);
@@ -68,6 +68,7 @@ class DataAnalysisAgentFactoryTest {
 		assertCapabilityContains(agents, PYTHON_AGENT, PYTHON_GENERATE_NODE,
 				PYTHON_EXECUTE_NODE, PYTHON_ANALYZE_NODE);
 		assertCapabilityContains(agents, REPORT_AGENT, REPORT_GENERATOR_NODE);
+		assertCapabilityContains(agents, REPORT_REVISION_AGENT, REPORT_REVISION_NODE);
 		assertCapabilityContains(agents, HUMAN_FEEDBACK_NODE, HUMAN_FEEDBACK_NODE);
 	}
 

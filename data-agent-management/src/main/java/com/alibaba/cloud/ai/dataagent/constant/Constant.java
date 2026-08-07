@@ -52,6 +52,7 @@ public final class Constant {
 
 	public static final String FINAL_ANSWER = "final_answer";
 
+	/** Marks a follow-up that can revise the latest report without querying data again. */
 	public static final String NL2SQL_GRAPH_NAME = "nl2sqlGraph";
 
 	public static final String INTENT_RECOGNITION_NODE_OUTPUT = "INTENT_RECOGNITION_NODE_OUTPUT";
@@ -128,6 +129,8 @@ public final class Constant {
 
 	public static final String REPORT_GENERATOR_NODE = "REPORT_GENERATOR_NODE";
 
+	public static final String REPORT_REVISION_NODE = "REPORT_REVISION_NODE";
+
 	public static final String SCHEMA_RECALL_NODE = "SCHEMA_RECALL_NODE";
 
 	public static final String BUSINESS_DATA_DISCOVERY_NODE = "BUSINESS_DATA_DISCOVERY_NODE";
@@ -141,6 +144,9 @@ public final class Constant {
 	public static final String SEMANTIC_CONSISTENCY_NODE = "SEMANTIC_CONSISTENCY_NODE";
 
 	public static final String HUMAN_FEEDBACK_NODE = "HUMAN_FEEDBACK_NODE";
+
+	/** Parent-graph checkpoint gate used before entering the human-feedback subgraph. */
+	public static final String HUMAN_FEEDBACK_INTERRUPT_NODE = "HUMAN_FEEDBACK_INTERRUPT_NODE";
 
 	// Keys related to Python code execution
 	public static final String PYTHON_GENERATE_NODE = "PYTHON_GENERATE_NODE";

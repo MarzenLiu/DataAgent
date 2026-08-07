@@ -22,6 +22,7 @@ import com.alibaba.cloud.ai.dataagent.entity.UserProfile;
 import com.alibaba.cloud.ai.dataagent.prompt.PromptHelper;
 import com.alibaba.cloud.ai.dataagent.service.llm.LlmService;
 import com.alibaba.cloud.ai.dataagent.service.prompt.UserPromptService;
+import com.alibaba.cloud.ai.dataagent.service.report.ReportArtifactService;
 import com.alibaba.cloud.ai.dataagent.enums.TextType;
 import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
@@ -63,11 +64,15 @@ public class ReportGeneratorNode implements NodeAction {
 
 	private final UserPromptService promptConfigService;
 
-	public ReportGeneratorNode(LlmService llmService, UserPromptService promptConfigService) {
+	private final ReportArtifactService reportArtifactService;
+
+	public ReportGeneratorNode(LlmService llmService, UserPromptService promptConfigService,
+			ReportArtifactService reportArtifactService) {
 		this.llmService = llmService;
 		this.converter = new BeanOutputConverter<>(new ParameterizedTypeReference<>() {
 		});
 		this.promptConfigService = promptConfigService;
+		this.reportArtifactService = reportArtifactService;
 	}
 
 	@Override
@@ -102,14 +107,17 @@ public class ReportGeneratorNode implements NodeAction {
 		UserProfile userProfile = StateUtil.getObjectValue(state, USER_PROFILE, UserProfile.class, (UserProfile) null);
 		Flux<ChatResponse> reportGenerationFlux = generateReport(userInput, plan, executionResults,
 				summaryAndRecommendations, agentId, userProfile);
+		Long reportAgentId = agentId;
 
 		TextType reportTextType = TextType.MARK_DOWN;
 		String reportOwnerFields = buildReportOwnerFields(userProfile);
+		String conversationId = state.value(CONVERSATION_ID).map(Object::toString).orElse(null);
 
 		// Use utility class to create streaming generator with content collection
 		Flux<GraphResponse<StreamingOutput>> generator = FluxUtil.createStreamingGeneratorWithMessages(this.getClass(),
 				state, "开始生成报告...", "报告生成完成！", reportContent -> {
 					log.debug("Generated report content: {}", reportContent);
+					saveReportArtifact(conversationId, reportAgentId, userInput, stripMarkdownMarkers(reportContent));
 					Map<String, Object> result = new HashMap<>();
 					result.put(RESULT, reportContent);
 					result.put(SQL_EXECUTE_NODE_OUTPUT, null);
@@ -123,6 +131,23 @@ public class ReportGeneratorNode implements NodeAction {
 						Flux.just(ChatResponseUtil.createPureResponse(reportTextType.getEndSign()))));
 
 		return Map.of(RESULT, generator);
+	}
+
+	private String stripMarkdownMarkers(String reportContent) {
+		return reportContent.replace(TextType.MARK_DOWN.getStartSign(), "")
+			.replace(TextType.MARK_DOWN.getEndSign(), "")
+			.trim();
+	}
+
+	private void saveReportArtifact(String conversationId, Long agentId, String sourceQuery, String reportContent) {
+		try {
+			reportArtifactService.save(conversationId, agentId, sourceQuery, reportContent);
+		}
+		catch (RuntimeException ex) {
+			// Report delivery must not fail because the cross-turn optimization store is
+			// temporarily unavailable.
+			log.warn("Unable to persist report artifact for conversation {}", conversationId, ex);
+		}
 	}
 
 	private String buildReportOwnerFields(UserProfile profile) {

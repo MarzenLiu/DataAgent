@@ -20,12 +20,18 @@ import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.AgentBasicInfo;
 import com.alibaba.cloud.ai.dataagent.workflow.agent.capability.WorkflowCapabilityAgent;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
+import com.alibaba.cloud.ai.graph.CompileConfig;
+import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.OverAllState;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.agent.Agent;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
+import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
+import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.ChatModel;
@@ -36,6 +42,7 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.alibaba.cloud.ai.dataagent.constant.Constant.*;
@@ -86,11 +93,9 @@ class DataAnalysisSupervisorAgentTest {
 
 		assertEquals("executed", state.value("request_agent_result").orElseThrow());
 		assertEquals(FINISH, state.value(MULTI_AGENT_NEXT).orElseThrow());
-		assertEquals(2, modelCalls.get());
+		assertEquals(1, modelCalls.get());
 		assertFalse(observedPrompts.get(0).contains("DATA_AGENT_RESULT"));
-		assertTrue(observedPrompts.get(1).contains("DATA_AGENT_RESULT completed_agent="
-				+ REQUEST_UNDERSTANDING_AGENT));
-		assertEquals(7, supervisor.subAgents().size());
+		assertEquals(8, supervisor.subAgents().size());
 		assertTrue(supervisor instanceof com.alibaba.cloud.ai.graph.agent.flow.agent.SupervisorAgent);
 	}
 
@@ -112,6 +117,34 @@ class DataAnalysisSupervisorAgentTest {
 		assertTrue(graph.contains(REQUEST_UNDERSTANDING_AGENT));
 		assertTrue(graph.contains(SQL_AGENT));
 		assertFalse(graph.contains(USER_PROFILE_NODE));
+	}
+
+	@Test
+	void supervisorRouterCanSelectReportRevisionCapabilityFromConversationContext() throws Exception {
+		KeyStrategyFactory keyStrategyFactory = keyStrategyFactory();
+		AtomicInteger modelCalls = new AtomicInteger();
+		List<String> observedPrompts = new ArrayList<>();
+		ChatModel model = prompt -> {
+			observedPrompts.add(prompt.getContents());
+			return ChatResponseUtil.createPureResponse(modelCalls.getAndIncrement() == 0
+					? "[\"" + REPORT_REVISION_AGENT + "\"]" : "[\"FINISH\"]");
+		};
+		Agent revisionAgent = capabilityAgent(REPORT_REVISION_AGENT, keyStrategyFactory, node_async(state -> Map.of(
+				"revision_result", "revised",
+				MULTI_AGENT_NEXT, FINISH,
+				"messages", new UserMessage(capabilityResultMessage(REPORT_REVISION_AGENT, FINISH)))));
+		DataAnalysisSupervisorAgent supervisor = new DataAnalysisSupervisorAgent(
+				ReactAgent.builder().name(ROUTER_AGENT_NAME).model(model).includeContents(false).build(),
+				List.of(revisionAgent), keyStrategyFactory);
+
+		OverAllState state = supervisor.invoke(Map.of("messages",
+				List.of(new SystemMessage("DATA_AGENT_CONTEXT kind=LATEST_REPORT"), new UserMessage("精简报告"))))
+			.orElseThrow();
+
+		assertEquals("revised", state.value("revision_result").orElseThrow());
+		assertTrue(observedPrompts.get(0).contains("DATA_AGENT_CONTEXT kind=LATEST_REPORT"));
+		assertTrue(observedPrompts.get(0).contains("精简报告"));
+		assertEquals(1, modelCalls.get());
 	}
 
 	@Test
@@ -138,7 +171,63 @@ class DataAnalysisSupervisorAgentTest {
 			.orElseThrow();
 
 		assertEquals("preserved", state.value("consumer_result").orElseThrow());
-		assertEquals(3, modelCalls.get());
+		assertEquals(1, modelCalls.get());
+	}
+
+	@Test
+	void humanReviewHandoffInterruptsBeforeSqlAndApprovalResumesExecution() throws Exception {
+		KeyStrategyFactory keyStrategyFactory = keyStrategyFactory();
+		AtomicInteger modelCalls = new AtomicInteger();
+		ChatModel routerModel = new ChatModel() {
+			@Override
+			public ChatResponse call(Prompt prompt) {
+				modelCalls.incrementAndGet();
+				return ChatResponseUtil.createPureResponse("[\"" + PLANNING_AGENT + "\"]");
+			}
+
+			@Override
+			public Flux<ChatResponse> stream(Prompt prompt) {
+				return Flux.just(call(prompt));
+			}
+		};
+		ReactAgent router = ReactAgent.builder().name(ROUTER_AGENT_NAME).model(routerModel).build();
+		Agent planning = capabilityAgent(PLANNING_AGENT, keyStrategyFactory, node_async(state -> Map.of(
+				PLAN_NEXT_NODE, HUMAN_FEEDBACK_NODE,
+				MULTI_AGENT_NEXT, HUMAN_FEEDBACK_NODE)));
+		Agent humanReview = capabilityAgent(HUMAN_FEEDBACK_NODE, keyStrategyFactory, node_async(state -> Map.of(
+				"human_review_executed", true,
+				MULTI_AGENT_NEXT, SQL_AGENT)));
+		Agent sql = capabilityAgent(SQL_AGENT, keyStrategyFactory, node_async(state -> Map.of(
+				"sql_executed", true,
+				MULTI_AGENT_NEXT, FINISH)));
+		DataAnalysisSupervisorAgent supervisor = new DataAnalysisSupervisorAgent(router,
+				List.of(planning, humanReview, sql), keyStrategyFactory);
+		MemorySaver saver = MemorySaver.builder().build();
+		supervisor.configure(CompileConfig.builder()
+			.saverConfig(SaverConfig.builder().register(saver).build())
+			.interruptBefore(HUMAN_FEEDBACK_INTERRUPT_NODE)
+			.build());
+		RunnableConfig runConfig = RunnableConfig.builder().threadId(UUID.randomUUID().toString()).build();
+
+		List<NodeOutput> interrupted = supervisor
+			.stream(Map.of("messages", List.of(new UserMessage("review before executing"))), runConfig)
+			.collectList()
+			.block();
+
+		assertNotNull(interrupted);
+		assertEquals(HUMAN_FEEDBACK_INTERRUPT_NODE, saver.get(runConfig).orElseThrow().getNextNodeId());
+		assertTrue(interrupted.stream().noneMatch(output -> output.state().value("sql_executed").isPresent()));
+		assertEquals(1, modelCalls.get());
+
+		Map<String, Object> feedback = Map.of("feedback", true, "feedback_content", "Accept");
+		RunnableConfig updatedConfig = supervisor.updateState(runConfig, Map.of(HUMAN_FEEDBACK_DATA, feedback));
+		List<NodeOutput> resumed = supervisor.stream((Map<String, Object>) null, updatedConfig).collectList().block();
+
+		assertNotNull(resumed);
+		OverAllState finalState = resumed.get(resumed.size() - 1).state();
+		assertEquals(true, finalState.value("human_review_executed").orElseThrow());
+		assertEquals(true, finalState.value("sql_executed").orElseThrow());
+		assertEquals(1, modelCalls.get());
 	}
 
 	private List<Agent> capabilityAgents(KeyStrategyFactory keyStrategyFactory) {
@@ -149,6 +238,7 @@ class DataAnalysisSupervisorAgentTest {
 				capabilityAgent(SQL_AGENT, keyStrategyFactory, false),
 				capabilityAgent(PYTHON_AGENT, keyStrategyFactory, false),
 				capabilityAgent(REPORT_AGENT, keyStrategyFactory, false),
+				capabilityAgent(REPORT_REVISION_AGENT, keyStrategyFactory, false),
 				capabilityAgent(HUMAN_FEEDBACK_NODE, keyStrategyFactory, false));
 	}
 
@@ -187,6 +277,11 @@ class DataAnalysisSupervisorAgentTest {
 			strategies.put("request_agent_result", KeyStrategy.REPLACE);
 			strategies.put("business_state", KeyStrategy.REPLACE);
 			strategies.put("consumer_result", KeyStrategy.REPLACE);
+			strategies.put("revision_result", KeyStrategy.REPLACE);
+			strategies.put(PLAN_NEXT_NODE, KeyStrategy.REPLACE);
+			strategies.put(HUMAN_FEEDBACK_DATA, KeyStrategy.REPLACE);
+			strategies.put("human_review_executed", KeyStrategy.REPLACE);
+			strategies.put("sql_executed", KeyStrategy.REPLACE);
 			return strategies;
 		};
 	}
