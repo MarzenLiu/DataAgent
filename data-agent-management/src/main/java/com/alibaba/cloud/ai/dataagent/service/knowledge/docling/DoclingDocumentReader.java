@@ -40,7 +40,6 @@ import com.alibaba.cloud.ai.dataagent.service.knowledge.TextSplitterFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.transformer.splitter.TextSplitter;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -57,12 +56,8 @@ public class DoclingDocumentReader {
 
 	private final TextSplitterFactory textSplitterFactory;
 
-	public DoclingDocumentReader(DoclingProperties properties, ObjectProvider<DoclingServeApi> clientProvider,
-			List<DoclingDocumentMapper> mappers, TextSplitterFactory textSplitterFactory) {
-		this(properties, clientProvider.getIfAvailable(), mappers, textSplitterFactory);
-	}
 
-	DoclingDocumentReader(DoclingProperties properties, DoclingServeApi client, List<DoclingDocumentMapper> mappers,
+	public	DoclingDocumentReader(DoclingProperties properties, DoclingServeApi client, List<DoclingDocumentMapper> mappers,
 			TextSplitterFactory textSplitterFactory) {
 		this.properties = properties;
 		this.client = client;
@@ -93,31 +88,27 @@ public class DoclingDocumentReader {
 			.findFirst()
 			.orElseThrow(() -> new IllegalArgumentException("Unsupported Docling document format: " + extension));
 
-		MaterializedResource materialized = materialize(resource, filename, extension);
-		try {
-			ConvertDocumentRequest request = ConvertDocumentRequest.builder()
-				.options(options(extension))
-				.build();
-			var response = client.convertFilesAsync(request, materialized.path()).toCompletableFuture().join();
-			if (!(response instanceof InBodyConvertDocumentResponse inBody)) {
-				throw new IllegalStateException("Docling returned unsupported response type: " + response.getResponseType());
-			}
-			if ("failure".equalsIgnoreCase(inBody.getStatus()) || "skipped".equalsIgnoreCase(inBody.getStatus())) {
-				throw new IllegalStateException("Docling conversion failed with status: " + inBody.getStatus());
-			}
-			DoclingDocument document = inBody.getDocument() == null ? null : inBody.getDocument().getJsonContent();
-			if (document == null) {
-				throw new IllegalStateException("Docling response did not contain json_content");
-			}
-			List<Document> mapped = mapper.map(document, filename);
-			List<Document> result = "pdf".equals(extension) ? splitPdfText(mapped, splitterType) : mapped;
-			log.info("Docling parsed document: filename={}, format={}, status={}, chunks={}", filename, extension,
-					inBody.getStatus(), result.size());
-			return result;
-		}
-		finally {
-			materialized.close();
-		}
+        try (MaterializedResource materialized = materialize(resource, filename, extension)) {
+            ConvertDocumentRequest request = ConvertDocumentRequest.builder()
+                    .options(options(extension))
+                    .build();
+            var response = client.convertFilesAsync(request, materialized.path()).toCompletableFuture().join();
+            if (!(response instanceof InBodyConvertDocumentResponse inBody)) {
+                throw new IllegalStateException("Docling returned unsupported response type: " + response.getResponseType());
+            }
+            if ("failure".equalsIgnoreCase(inBody.getStatus()) || "skipped".equalsIgnoreCase(inBody.getStatus())) {
+                throw new IllegalStateException("Docling conversion failed with status: " + inBody.getStatus());
+            }
+            DoclingDocument document = inBody.getDocument() == null ? null : inBody.getDocument().getJsonContent();
+            if (document == null) {
+                throw new IllegalStateException("Docling response did not contain json_content");
+            }
+            List<Document> mapped = mapper.map(document, filename);
+            List<Document> result = "pdf".equals(extension) ? splitPdfText(mapped, splitterType) : mapped;
+            log.info("Docling parsed document: filename={}, format={}, status={}, chunks={}", filename, extension,
+                    inBody.getStatus(), result.size());
+            return result;
+        }
 	}
 
 	private ConvertDocumentOptions options(String extension) {

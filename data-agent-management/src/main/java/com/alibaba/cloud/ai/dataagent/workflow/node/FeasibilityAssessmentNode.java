@@ -47,7 +47,7 @@ public class FeasibilityAssessmentNode implements NodeAction {
 			FeasibilityAssessmentOutputDTO.class);
 
 	private final LlmService llmService;
-
+【
 	@Override
 	public Map<String, Object> apply(OverAllState state) throws Exception {
 		// 获取canonical_query

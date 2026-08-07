@@ -60,7 +60,7 @@ spring:
             bucket-name: ${OSS_BUCKET_NAME:}
             custom-domain: ${OSS_CUSTOM_DOMAIN:}
         docling:
-          enabled: ${DOCLING_ENABLED:false}
+          enabled: ${DOCLING_ENABLED:true}
           base-url: ${DOCLING_BASE_URL:http://localhost:5001}
           api-key: ${DOCLING_API_KEY:}
           connect-timeout: ${DOCLING_CONNECT_TIMEOUT:5s}
