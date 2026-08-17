@@ -54,6 +54,20 @@ CREATE TABLE product_db.order_items (
                              FOREIGN KEY (product_id) REFERENCES products(id)
 ) COMMENT='订单明细表';
 
+CREATE TABLE product_db.mcp_order_operation (
+    idempotency_key VARCHAR(128) PRIMARY KEY,
+    agent_id BIGINT NOT NULL,
+    user_id INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    order_id INT NULL,
+    state VARCHAR(20) NOT NULL,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_mcp_order_operation_order UNIQUE (order_id),
+    FOREIGN KEY (order_id) REFERENCES product_db.orders(id)
+);
+
 -- 商品分类表
 CREATE TABLE product_db.categories (
                             id INT PRIMARY KEY AUTO_INCREMENT COMMENT '分类ID，主键自增',
@@ -68,4 +82,3 @@ CREATE TABLE product_db.product_categories (
                                     FOREIGN KEY (product_id) REFERENCES products(id),
                                     FOREIGN KEY (category_id) REFERENCES categories(id)
 ) COMMENT='商品与分类关联表';
-

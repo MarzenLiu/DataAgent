@@ -9,6 +9,10 @@ springdoc:
 
 # 存储 DataAgent 业务数据的数据库，并非Agent分析数据的来源
 spring:
+  profiles:
+    # Local development now uses Milvus by default. Set
+    # SPRING_PROFILES_ACTIVE to another profile to override it.
+    default: ${DATA_AGENT_DEFAULT_PROFILE:milvus}
   codec:
     # WebFlux decodes request bodies with a 256KB default buffer, which is too
     # small for larger chat messages persisted through the messages endpoint.
@@ -33,6 +37,7 @@ spring:
           jdbc:
             initialize-schema: always
     vectorstore:
+      # application-milvus.yml overrides this when the default milvus profile is active.
       type: simple
     alibaba:
       data-agent:

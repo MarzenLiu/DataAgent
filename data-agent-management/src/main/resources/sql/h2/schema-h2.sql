@@ -154,6 +154,24 @@ CREATE TABLE IF NOT EXISTS agent_datasource (
   FOREIGN KEY (datasource_id) REFERENCES datasource(id) ON DELETE CASCADE
 ) ENGINE = InnoDB COMMENT = '智能体数据源关联表';
 
+-- AgentScope 智能体工具配置：工具白名单、参数注入和审批策略均由数据库驱动
+CREATE TABLE IF NOT EXISTS agent_tool (
+  id INT NOT NULL AUTO_INCREMENT,
+  agent_id INT NOT NULL COMMENT '智能体ID',
+  tool_name VARCHAR(100) NOT NULL COMMENT 'MCP工具名称',
+  approval_mode VARCHAR(30) NOT NULL DEFAULT 'ALLOW' COMMENT 'ALLOW/ASK_WHEN_HITL/ALWAYS_ASK',
+  inject_agent_id TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否由服务端注入agentId',
+  available_in_nl2sql_only TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'NL2SQL_ONLY运行模式下是否可用',
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '工具排序',
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT uk_agent_tool UNIQUE (agent_id, tool_name),
+  INDEX idx_agent_tool_enabled (agent_id, is_enabled),
+  FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+) ENGINE = InnoDB COMMENT = '智能体MCP工具配置表';
+
 -- 智能体预设问题表
 CREATE TABLE IF NOT EXISTS agent_preset_question (
   id INT NOT NULL AUTO_INCREMENT,

@@ -27,6 +27,17 @@ DataAgent、Langfuse 和本地 MySQL 测试变量已写入用户级 `~/.zshrc`�
 
 DataAgent 地址：http://localhost:8065
 
+AgentScope 独立服务复用相同的四个 `LANGFUSE_*` 环境变量，默认地址为
+http://localhost:8066：
+
+```bash
+mvn -pl data-agent-agentscope spring-boot:run
+```
+
+在 Langfuse 中，AgentScope 请求显示为 `data-agent.stream-search`，下层包含
+`invoke_agent`、模型 `generation` 和工具调用；`conversationId` 对应 Session，
+`agentId` 对应 User。
+
 本地 DataAgent MySQL 连接账号：
 
 ```text

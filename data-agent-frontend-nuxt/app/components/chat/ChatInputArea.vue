@@ -147,20 +147,26 @@
 			<div v-if="store.showHumanFeedback" class="human-feedback-panel">
 				<div class="feedback-header">
 					<v-icon color="warning" size="16" class="mr-1">mdi-account-question-outline</v-icon>
-					<span>请确认执行计划</span>
+					<span>请确认工具执行</span>
 				</div>
 				<textarea
 					v-model="store.feedbackContent"
 					class="feedback-textarea"
 					rows="2"
-					placeholder="输入您的反馈意见（留空表示接受计划）"
+					placeholder="拒绝时可填写修改意见"
 				/>
 				<div class="feedback-actions">
-					<v-btn class="feedback-btn feedback-btn--accept" @click="store.submitFeedback(false, store.feedbackContent)">
-						<v-icon size="14" class="mr-1">mdi-check</v-icon>接受计划
+					<v-btn class="feedback-btn feedback-btn--once" @click="store.submitFeedback('once', store.feedbackContent)">
+						<v-icon size="14" class="mr-1">mdi-check</v-icon>仅批准本次
 					</v-btn>
-					<v-btn class="feedback-btn feedback-btn--reject" @click="store.submitFeedback(true, store.feedbackContent)">
-						<v-icon size="14" class="mr-1">mdi-close</v-icon>拒绝重规划
+					<v-btn class="feedback-btn feedback-btn--tool-session" @click="store.submitFeedback('tool-session', store.feedbackContent)">
+						<v-icon size="14" class="mr-1">mdi-shield-check-outline</v-icon>本会话允许此类工具
+					</v-btn>
+					<v-btn class="feedback-btn feedback-btn--all-session" @click="store.submitFeedback('all-session', store.feedbackContent)">
+						<v-icon size="14" class="mr-1">mdi-shield-lock-open-outline</v-icon>本会话默认允许
+					</v-btn>
+					<v-btn class="feedback-btn feedback-btn--reject" @click="store.submitFeedback('reject', store.feedbackContent)">
+						<v-icon size="14" class="mr-1">mdi-close</v-icon>拒绝并重规划
 					</v-btn>
 				</div>
 			</div>
@@ -514,6 +520,7 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 .feedback-actions {
 	display: flex;
 	gap: 8px;
+	flex-wrap: wrap;
 }
 .feedback-btn {
 	display: inline-flex;
@@ -526,8 +533,16 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 	cursor: pointer;
 	transition: opacity 0.1s;
 }
-.feedback-btn--accept {
+.feedback-btn--once {
 	background: #22c55e;
+	color: white;
+}
+.feedback-btn--tool-session {
+	background: #0f766e;
+	color: white;
+}
+.feedback-btn--all-session {
+	background: #1d4ed8;
 	color: white;
 }
 .feedback-btn--reject {

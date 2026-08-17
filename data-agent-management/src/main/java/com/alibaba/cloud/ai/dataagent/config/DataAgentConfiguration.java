@@ -234,54 +234,121 @@ public class DataAgentConfiguration implements DisposableBean {
 	private KeyStrategyFactory nl2sqlKeyStrategyFactory() {
 		return () -> {
 			HashMap<String, KeyStrategy> keyStrategyHashMap = new HashMap<>();
+
+			// ==================== 阶段一：请求初始化与会话上下文 ====================
+			// 【请求初始化】用户输入的自然语言问题
 			keyStrategyHashMap.put(INPUT_KEY, KeyStrategy.REPLACE);
+			// 【请求初始化】当前 DataAgent 的业务标识
 			keyStrategyHashMap.put(AGENT_ID, KeyStrategy.REPLACE);
+			// 【请求初始化】当前多轮对话的会话标识
 			keyStrategyHashMap.put(CONVERSATION_ID, KeyStrategy.REPLACE);
+			// 【会话上下文】图执行期间累计的系统、用户和 Agent 消息
 			keyStrategyHashMap.put("messages", KeyStrategy.APPEND);
-			keyStrategyHashMap.put(MULTI_AGENT_NEXT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(MULTI_AGENT_PLANNING_MODE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SUPERVISOR_NEXT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(HUMAN_NEXT_NODE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(USER_PROFILE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(USER_PROFILE_STATUS, KeyStrategy.REPLACE);
+			// 【会话上下文】从历史轮次聚合的多轮对话信息
 			keyStrategyHashMap.put(MULTI_TURN_CONTEXT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(INTENT_RECOGNITION_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(QUERY_ENHANCE_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(GENEGRATED_SEMANTIC_MODEL_PROMPT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(EVIDENCE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(TABLE_DOCUMENTS_FOR_SCHEMA_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(COLUMN_DOCUMENTS__FOR_SCHEMA_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SCHEMA_DISCOVERY_MODE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(BUSINESS_DATA_DISCOVERY_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(TABLE_RELATION_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(TABLE_RELATION_EXCEPTION_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(TABLE_RELATION_RETRY_COUNT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(DB_DIALECT_TYPE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(FEASIBILITY_ASSESSMENT_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SQL_GENERATE_SCHEMA_MISSING_ADVICE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SQL_GENERATE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SQL_GENERATE_COUNT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SQL_REGENERATE_REASON, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SEMANTIC_CONSISTENCY_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PLANNER_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PLAN_CURRENT_STEP, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PLAN_NEXT_NODE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PLAN_VALIDATION_STATUS, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PLAN_VALIDATION_ERROR, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PLAN_REPAIR_COUNT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SQL_EXECUTE_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(SQL_RESULT_LIST_MEMORY, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PYTHON_IS_SUCCESS, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PYTHON_TRIES_COUNT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PYTHON_FALLBACK_MODE, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PYTHON_EXECUTE_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PYTHON_GENERATE_NODE_OUTPUT, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(PYTHON_ANALYSIS_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【用户上下文】当前用户的画像数据
+			keyStrategyHashMap.put(USER_PROFILE, KeyStrategy.REPLACE);
+			// 【用户上下文】用户画像的加载或处理状态
+			keyStrategyHashMap.put(USER_PROFILE_STATUS, KeyStrategy.REPLACE);
+			// 【请求模式】是否只返回 NL2SQL 结果而不生成完整报告
 			keyStrategyHashMap.put(IS_ONLY_NL2SQL, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(HUMAN_REVIEW_ENABLED, KeyStrategy.REPLACE);
-			keyStrategyHashMap.put(HUMAN_FEEDBACK_DATA, KeyStrategy.REPLACE);
+			// 【链路追踪】当前图执行对应的线程标识
 			keyStrategyHashMap.put(TRACE_THREAD_ID, KeyStrategy.REPLACE);
+
+			// ==================== 阶段二：Supervisor 多 Agent 调度 ====================
+			// 【能力交接】已完成 Agent 指定的下一个能力 Agent
+			keyStrategyHashMap.put(MULTI_AGENT_NEXT, KeyStrategy.REPLACE);
+			// 【规划调度】PlanningAgent 的计划生成或计划执行模式
+			keyStrategyHashMap.put(MULTI_AGENT_PLANNING_MODE, KeyStrategy.REPLACE);
+			// 【首轮路由】Supervisor 模型选择的一个或多个能力 Agent
+			keyStrategyHashMap.put(SUPERVISOR_NEXT, KeyStrategy.REPLACE);
+
+			// ==================== 阶段三：请求理解与知识证据召回 ====================
+			// 【意图识别】IntentRecognitionNode 输出的请求意图
+			keyStrategyHashMap.put(INTENT_RECOGNITION_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【问题改写】QueryEnhanceNode 输出的标准化问题
+			keyStrategyHashMap.put(QUERY_ENHANCE_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【语义建模】基于业务语义生成的模型提示词
+			keyStrategyHashMap.put(GENEGRATED_SEMANTIC_MODEL_PROMPT, KeyStrategy.REPLACE);
+			// 【证据召回】知识库召回并格式化后的业务证据
+			keyStrategyHashMap.put(EVIDENCE, KeyStrategy.REPLACE);
+
+			// ==================== 阶段四：Schema 发现与数据可行性准备 ====================
+			// 【Schema 召回】匹配到的候选数据表文档
+			keyStrategyHashMap.put(TABLE_DOCUMENTS_FOR_SCHEMA_OUTPUT, KeyStrategy.REPLACE);
+			// 【Schema 召回】匹配到的候选字段文档
+			keyStrategyHashMap.put(COLUMN_DOCUMENTS__FOR_SCHEMA_OUTPUT, KeyStrategy.REPLACE);
+			// 【数据发现】是否运行面向数据目录探索的 Schema 发现模式
+			keyStrategyHashMap.put(SCHEMA_DISCOVERY_MODE, KeyStrategy.REPLACE);
+			// 【数据发现】可用业务数据、维度和指标的说明
+			keyStrategyHashMap.put(BUSINESS_DATA_DISCOVERY_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【表关系解析】已解析的数据表关联关系
+			keyStrategyHashMap.put(TABLE_RELATION_OUTPUT, KeyStrategy.REPLACE);
+			// 【表关系解析】解析表关系时产生的异常信息
+			keyStrategyHashMap.put(TABLE_RELATION_EXCEPTION_OUTPUT, KeyStrategy.REPLACE);
+			// 【表关系解析】表关系解析的当前重试次数
+			keyStrategyHashMap.put(TABLE_RELATION_RETRY_COUNT, KeyStrategy.REPLACE);
+			// 【数据库适配】当前数据源使用的 SQL 方言类型
+			keyStrategyHashMap.put(DB_DIALECT_TYPE, KeyStrategy.REPLACE);
+			// 【可行性评估】当前问题能否由已准备的数据完成
+			keyStrategyHashMap.put(FEASIBILITY_ASSESSMENT_NODE_OUTPUT, KeyStrategy.REPLACE);
+
+			// ==================== 阶段五：分析计划生成与推进 ====================
+			// 【计划生成】PlannerNode 生成的结构化执行计划
+			keyStrategyHashMap.put(PLANNER_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【计划推进】当前正在执行的计划步骤序号
+			keyStrategyHashMap.put(PLAN_CURRENT_STEP, KeyStrategy.REPLACE);
+			// 【计划路由】当前计划步骤对应的下一个执行节点
+			keyStrategyHashMap.put(PLAN_NEXT_NODE, KeyStrategy.REPLACE);
+			// 【计划校验】执行计划是否合法且可执行
+			keyStrategyHashMap.put(PLAN_VALIDATION_STATUS, KeyStrategy.REPLACE);
+			// 【计划校验】计划校验或人工驳回产生的错误说明
+			keyStrategyHashMap.put(PLAN_VALIDATION_ERROR, KeyStrategy.REPLACE);
+			// 【计划修复】计划重新生成或修复的累计次数
+			keyStrategyHashMap.put(PLAN_REPAIR_COUNT, KeyStrategy.REPLACE);
+
+			// ==================== 阶段六：人工审核与反馈恢复 ====================
+			// 【人工审核】HumanFeedbackNode 处理后的下一步节点
+			keyStrategyHashMap.put(HUMAN_NEXT_NODE, KeyStrategy.REPLACE);
+			// 【人工审核】当前计划是否需要在执行前等待用户确认
+			keyStrategyHashMap.put(HUMAN_REVIEW_ENABLED, KeyStrategy.REPLACE);
+			// 【人工反馈】用户的接受或驳回结果及反馈内容
+			keyStrategyHashMap.put(HUMAN_FEEDBACK_DATA, KeyStrategy.REPLACE);
+
+			// ==================== 阶段七：SQL 生成、校验与执行 ====================
+			// 【SQL 生成】Schema 缺失时提供给后续修复的建议
+			keyStrategyHashMap.put(SQL_GENERATE_SCHEMA_MISSING_ADVICE, KeyStrategy.REPLACE);
+			// 【SQL 生成】模型生成的 SQL 文本
+			keyStrategyHashMap.put(SQL_GENERATE_OUTPUT, KeyStrategy.REPLACE);
+			// 【SQL 生成】SQL 生成的当前尝试次数
+			keyStrategyHashMap.put(SQL_GENERATE_COUNT, KeyStrategy.REPLACE);
+			// 【SQL 修复】触发 SQL 重新生成的失败原因
+			keyStrategyHashMap.put(SQL_REGENERATE_REASON, KeyStrategy.REPLACE);
+			// 【语义校验】生成 SQL 与用户问题的语义一致性结果
+			keyStrategyHashMap.put(SEMANTIC_CONSISTENCY_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【SQL 执行】数据库执行 SQL 后的本步骤结果
+			keyStrategyHashMap.put(SQL_EXECUTE_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【SQL 结果记忆】跨计划步骤累计保存的 SQL 查询结果
+			keyStrategyHashMap.put(SQL_RESULT_LIST_MEMORY, KeyStrategy.REPLACE);
+
+			// ==================== 阶段八：Python 生成、执行与分析 ====================
+			// 【Python 执行】最近一次 Python 代码执行是否成功
+			keyStrategyHashMap.put(PYTHON_IS_SUCCESS, KeyStrategy.REPLACE);
+			// 【Python 执行】Python 代码生成或执行的当前尝试次数
+			keyStrategyHashMap.put(PYTHON_TRIES_COUNT, KeyStrategy.REPLACE);
+			// 【Python 降级】代码执行失败后的降级处理模式
+			keyStrategyHashMap.put(PYTHON_FALLBACK_MODE, KeyStrategy.REPLACE);
+			// 【Python 执行】PythonExecuteNode 返回的原始执行结果
+			keyStrategyHashMap.put(PYTHON_EXECUTE_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【Python 生成】PythonGenerateNode 生成的代码
+			keyStrategyHashMap.put(PYTHON_GENERATE_NODE_OUTPUT, KeyStrategy.REPLACE);
+			// 【Python 分析】PythonAnalyzeNode 对执行结果的业务解读
+			keyStrategyHashMap.put(PYTHON_ANALYSIS_NODE_OUTPUT, KeyStrategy.REPLACE);
+
+			// ==================== 阶段九：结果汇总与最终输出 ====================
+			// 【结果汇总】图执行过程中供节点间传递的通用业务结果
 			keyStrategyHashMap.put(RESULT, KeyStrategy.REPLACE);
+			// 【最终输出】返回给前端用户的最终答案或报告内容
 			keyStrategyHashMap.put(FINAL_ANSWER, KeyStrategy.REPLACE);
 			return keyStrategyHashMap;
 		};

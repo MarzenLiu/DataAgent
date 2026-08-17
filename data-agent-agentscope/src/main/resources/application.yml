@@ -1,0 +1,35 @@
+server:
+  port: ${AGENTSCOPE_SERVER_PORT:8066}
+
+spring:
+  application:
+    name: data-agent-agentscope
+  datasource:
+    url: ${DATA_AGENT_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/saa_data_agent?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai}
+    username: ${DATA_AGENT_DATASOURCE_USERNAME:root}
+    password: ${DATA_AGENT_DATASOURCE_PASSWORD:root}
+    driver-class-name: ${DATA_AGENT_DATASOURCE_DRIVER:com.mysql.cj.jdbc.Driver}
+
+agentscope:
+  data-agent:
+    state-directory: ${AGENTSCOPE_STATE_DIRECTORY:.agentscope/state}
+    compaction-trigger-messages: ${AGENTSCOPE_COMPACTION_TRIGGER_MESSAGES:30}
+    compaction-keep-messages: ${AGENTSCOPE_COMPACTION_KEEP_MESSAGES:10}
+    mcp:
+      url: ${AGENTSCOPE_MCP_URL:http://127.0.0.1:8068/mcp}
+      timeout: ${AGENTSCOPE_MCP_TIMEOUT:60s}
+    langfuse:
+      enabled: ${LANGFUSE_ENABLED:false}
+      host: ${LANGFUSE_HOST:}
+      public-key: ${LANGFUSE_PUBLIC_KEY:}
+      secret-key: ${LANGFUSE_SECRET_KEY:}
+      service-name: ${LANGFUSE_SERVICE_NAME:data-agent-agentscope}
+      environment: ${LANGFUSE_ENVIRONMENT:development}
+    model:
+      provider: ${AGENTSCOPE_MODEL_PROVIDER:dashscope}
+      api-key: ${AGENTSCOPE_MODEL_API_KEY:${DASHSCOPE_API_KEY:}}
+      name: ${AGENTSCOPE_MODEL_NAME:qwen-plus}
+      base-url: ${AGENTSCOPE_MODEL_BASE_URL:}
+      endpoint-path: ${AGENTSCOPE_MODEL_ENDPOINT_PATH:}
+      temperature: ${AGENTSCOPE_MODEL_TEMPERATURE:0.1}
+      max-tokens: ${AGENTSCOPE_MODEL_MAX_TOKENS:8000}

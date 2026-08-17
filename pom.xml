@@ -12,6 +12,8 @@
 
   <modules>
     <module>data-agent-management</module>
+    <module>data-agent-mcp-server</module>
+    <module>data-agent-agentscope</module>
   </modules>
   <scm>
     <connection>git://github.com/spring-ai-alibaba/DataAgent.git</connection>

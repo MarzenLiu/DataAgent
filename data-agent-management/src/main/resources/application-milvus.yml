@@ -9,6 +9,9 @@ spring:
         database-name: ${MILVUS_DATABASE:default}
         collection-name: ${MILVUS_COLLECTION:vector_store}
         embedding-dimension: ${MILVUS_DIMENSION:1024}
+        index-type: AUTOINDEX
+        metric-type: COSINE
+        index-parameters: '{}'
         initialize-schema: true
     alibaba:
       data-agent:

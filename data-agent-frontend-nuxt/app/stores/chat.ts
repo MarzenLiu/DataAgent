@@ -412,6 +412,10 @@ export const useChatStore = defineStore('chat', () => {
 				}
 				if (response.eventType === GraphEventType.HUMAN_FEEDBACK_REQUIRED) {
 					awaitingHumanFeedback = true;
+					if (response.text) {
+						sessionState.nodeBlocks.push([{ ...response, nodeName: 'SqlExecuteNode' }]);
+						scheduleViewSync();
+					}
 					return;
 				}
 
@@ -521,7 +525,7 @@ export const useChatStore = defineStore('chat', () => {
 						.catch((e) => console.error(e));
 				}
 
-				if (awaitingHumanFeedback && !finalReply) {
+				if (awaitingHumanFeedback) {
 					showHumanFeedback.value = true;
 				} else {
 					sessionState.isStreaming = false;
@@ -582,14 +586,24 @@ export const useChatStore = defineStore('chat', () => {
 		}
 	}
 
-	async function submitFeedback(rejected: boolean, content: string) {
+	type HitlDecision = 'once' | 'tool-session' | 'all-session' | 'reject';
+
+	async function submitFeedback(decision: HitlDecision, content: string) {
 		if (!lastRequest.value) return;
 		showHumanFeedback.value = false;
 		feedbackContent.value = '';
+		const rejected = decision === 'reject';
+		const approvalContent = {
+			once: 'HITL_APPROVE_ONCE',
+			'tool-session': 'HITL_APPROVE_TOOL_FOR_SESSION',
+			'all-session': 'HITL_APPROVE_ALL_FOR_SESSION',
+		} as const;
 		const newRequest: GraphRequest = {
 			...lastRequest.value,
 			rejectedPlan: rejected,
-			humanFeedbackContent: content || 'Accept',
+			humanFeedbackContent: rejected
+				? content || '请重新规划，不要执行当前操作。'
+				: approvalContent[decision],
 		};
 		await _sendGraphRequest(newRequest);
 	}

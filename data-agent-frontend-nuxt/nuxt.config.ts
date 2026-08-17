@@ -62,6 +62,9 @@ export default defineNuxtConfig({
 	// /路由重定向到/create-agent
 	routeRules: {
 		'/': { redirect: '/agent/new' },
+		// AgentScope 流式搜索与运行取消走独立服务
+		'/api/stream/search': { proxy: 'http://localhost:8066/api/stream/search' },
+		'/api/stream/stop': { proxy: 'http://localhost:8066/api/stream/stop' },
 		// 代理所有 /api/** 的请求到 Java 后端
 		'/api/**': { proxy: 'http://localhost:8065/api/**' },
 		'/nl2sql/**': { proxy: 'http://localhost:8065/nl2sql/**' },

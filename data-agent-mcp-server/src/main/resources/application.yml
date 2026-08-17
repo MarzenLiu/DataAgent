@@ -1,0 +1,28 @@
+server:
+  port: ${DATA_AGENT_MCP_SERVER_PORT:8068}
+  address: ${DATA_AGENT_MCP_SERVER_ADDRESS:127.0.0.1}
+
+spring:
+  application:
+    name: data-agent-mcp-server
+  datasource:
+    url: ${DATA_AGENT_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/saa_data_agent?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai}
+    username: ${DATA_AGENT_DATASOURCE_USERNAME:root}
+    password: ${DATA_AGENT_DATASOURCE_PASSWORD:root}
+    driver-class-name: ${DATA_AGENT_DATASOURCE_DRIVER:com.mysql.cj.jdbc.Driver}
+
+data-agent:
+  mcp:
+    endpoint: ${DATA_AGENT_MCP_ENDPOINT:/mcp}
+    max-query-rows: ${DATA_AGENT_MCP_MAX_QUERY_ROWS:200}
+    rag:
+      enabled: ${DATA_AGENT_MCP_RAG_ENABLED:true}
+      store-type: ${DATA_AGENT_MCP_RAG_STORE_TYPE:milvus}
+      vector-store-path: ${DATA_AGENT_MCP_VECTOR_STORE_PATH:vectorstore/vectorstore.json}
+      milvus-uri: ${DATA_AGENT_MCP_MILVUS_URI:http://127.0.0.1:19530}
+      milvus-database: ${MILVUS_DATABASE:default}
+      milvus-collection: ${MILVUS_COLLECTION:vector_store}
+      milvus-token: ${MILVUS_TOKEN:}
+      embedding-dimension: ${MILVUS_DIMENSION:1024}
+      top-k: ${DATA_AGENT_MCP_RAG_TOP_K:8}
+      similarity-threshold: ${DATA_AGENT_MCP_RAG_SIMILARITY_THRESHOLD:0.4}

@@ -8,6 +8,9 @@
 #   DOCLING_ENABLED=true
 #   DOCLING_BASE_URL=http://127.0.0.1:5001
 #   DOCLING_API_KEY=data-agent-docling
+#   SPRING_PROFILES_ACTIVE=milvus
+#   MILVUS_HOST=127.0.0.1
+#   MILVUS_PORT=19530
 #   LANGFUSE_ENABLED=true
 #   LANGFUSE_HOST=http://127.0.0.1:13000
 #   LANGFUSE_PUBLIC_KEY=pk-lf-dataagent-local
@@ -46,6 +49,40 @@ x-langfuse-runtime-environment: &langfuse-runtime-environment
   REDIS_TLS_ENABLED: "false"
 
 services:
+
+  # Milvus Lite is an embedded Python library and cannot be reached by Java over
+  # Docker networking. This single-container Standalone deployment is the
+  # lightweight server equivalent for local AgentScope/Spring development.
+  milvus:
+    image: milvusdb/milvus:v2.6.18
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+    ports:
+      - "127.0.0.1:${MILVUS_PORT:-19530}:19530"
+      - "127.0.0.1:${MILVUS_WEBUI_PORT:-19091}:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+      - ./config/milvus/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
+      - ./config/milvus/user.yaml:/milvus/configs/user.yaml:ro
+    networks:
+      data-agent-network:
+        aliases:
+          - milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
   # Original empty application MySQL definition (superseded by the migrated
   # data-agent-mysql volume below).
   # mysql:
@@ -268,6 +305,7 @@ volumes:
   sample-mysql-data:
   sample-postgres-data:
   docling-models:
+  milvus-data:
   langfuse-postgres-data:
     external: true
     name: langfuse-local_langfuse_postgres_data

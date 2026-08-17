@@ -36,6 +36,21 @@ CREATE TABLE order_items (
                              FOREIGN KEY (product_id) REFERENCES products(id)
 ) COMMENT='订单明细表';
 
+-- MCP 下单幂等记录，与订单、明细和库存变更处于同一事务
+CREATE TABLE mcp_order_operation (
+    idempotency_key VARCHAR(128) PRIMARY KEY COMMENT '下单请求幂等键',
+    agent_id BIGINT NOT NULL COMMENT '发起下单的智能体ID',
+    user_id INT NOT NULL COMMENT '下单用户ID',
+    product_id INT NOT NULL COMMENT '商品ID',
+    quantity INT NOT NULL COMMENT '购买数量',
+    order_id INT NULL COMMENT '成功创建的订单ID',
+    state VARCHAR(20) NOT NULL COMMENT 'PENDING/COMPLETED',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_mcp_order_operation_order (order_id),
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+) COMMENT='MCP下单幂等记录';
+
 -- 商品分类表
 CREATE TABLE categories (
                             id INT PRIMARY KEY AUTO_INCREMENT COMMENT '分类ID，主键自增',
