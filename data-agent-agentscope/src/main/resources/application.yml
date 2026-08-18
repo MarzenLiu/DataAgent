@@ -10,9 +10,14 @@ spring:
     password: ${DATA_AGENT_DATASOURCE_PASSWORD:root}
     driver-class-name: ${DATA_AGENT_DATASOURCE_DRIVER:com.mysql.cj.jdbc.Driver}
 
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
 agentscope:
   data-agent:
     state-directory: ${AGENTSCOPE_STATE_DIRECTORY:.agentscope/state}
+    skills-directory: ${AGENTSCOPE_SKILLS_DIRECTORY:data-agent-agentscope/skills}
     compaction-trigger-messages: ${AGENTSCOPE_COMPACTION_TRIGGER_MESSAGES:30}
     compaction-keep-messages: ${AGENTSCOPE_COMPACTION_KEEP_MESSAGES:10}
     mcp:

@@ -1,18 +1,11 @@
-/*
- * Copyright 2026 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+/* * Copyright 2026 the original author or authors. * * Licensed under the
+Apache License, Version 2.0 (the "License"); * you may not use this file except
+in compliance with the License. * You may obtain a copy of the License at * *
+https://www.apache.org/licenses/LICENSE-2.0 * * Unless required by applicable
+law or agreed to in writing, software * distributed under the License is
+distributed on an "AS IS" BASIS, * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied. * See the License for the specific language governing
+permissions and * limitations under the License. */
 
 <template>
 	<div ref="listRef" class="message-list custom-scrollbar">
@@ -82,18 +75,6 @@
 								<ChatMarkdownReport :content="message.content" />
 							</v-card>
 
-							<!-- Timeline -->
-							<v-card
-								v-else-if="message.messageType === 'timeline'"
-								class="ai-card timeline-card"
-								elevation="1"
-							>
-								<ChatWorkflowTimeline
-									:node-blocks="safeParseBlocks(message.content)"
-									:completed="true"
-								/>
-							</v-card>
-
 							<!-- Warning (user stopped) -->
 							<div
 								v-else-if="message.messageType === 'warning'"
@@ -118,42 +99,37 @@
 							</v-card>
 						</div>
 					</div>
-
-					<!-- ── Report card below completed timeline ────────── -->
-					<div
-						v-if="
-							message.messageType === 'timeline' &&
-							extractReportContent(message.content)
-						"
-						class="message-wrapper"
-					>
-						<div class="row ai-row">
-							<v-avatar
-								color="blue-darken-3"
-								size="34"
-								rounded="lg"
-								class="avatar"
-								style="visibility: hidden"
-							/>
-							<v-card class="ai-card report-card" elevation="1">
-								<ChatMarkdownReport
-									:content="extractReportContent(message.content)!"
-								/>
-							</v-card>
-						</div>
-					</div>
 				</template>
 
-				<!-- ── Streaming: Workflow Timeline ──────────────────── -->
+				<!-- ── Streaming: visible tool activity ──────────────── -->
 				<div
-					v-if="store.isStreaming && store.nodeBlocks.length > 0"
+					v-if="store.isStreaming && store.toolActivities.length > 0"
 					class="row ai-row"
 				>
 					<v-avatar color="blue-darken-3" size="34" rounded="lg" class="avatar">
 						<v-icon size="18" color="white">mdi-robot</v-icon>
 					</v-avatar>
-					<v-card class="ai-card timeline-card" elevation="1">
-						<ChatWorkflowTimeline :node-blocks="store.nodeBlocks" />
+					<v-card class="ai-card" elevation="1">
+						<div
+							v-for="activity in store.toolActivities"
+							:key="activity.id"
+							class="tool-activity"
+						>
+							<v-progress-circular
+								v-if="activity.status === 'running'"
+								indeterminate
+								size="15"
+								width="2"
+							/>
+							<v-icon
+								v-else-if="activity.status === 'completed'"
+								size="16"
+								color="success"
+								>mdi-check-circle</v-icon
+							>
+							<v-icon v-else size="16" color="error">mdi-alert-circle</v-icon>
+							<span>{{ activity.label }}</span>
+						</div>
 					</v-card>
 				</div>
 
@@ -176,7 +152,11 @@
 
 				<!-- ── Streaming spinner (before first node arrives) ── -->
 				<div
-					v-else-if="store.isStreaming && store.nodeBlocks.length === 0"
+					v-else-if="
+						store.isStreaming &&
+						store.toolActivities.length === 0 &&
+						!store.streamingReportContent
+					"
 					class="row ai-row"
 				>
 					<v-avatar color="blue-darken-3" size="34" rounded="lg" class="avatar">
@@ -201,20 +181,12 @@ import DOMPurify from 'dompurify';
 import { renderMarkdownContent } from '~/utils/markdown';
 import { useEchartsRenderer } from '~/composables/useEchartsRenderer';
 import { useChatStore } from '~/stores/chat';
-import { extractReportContent } from '~/utils/reportTimeline';
 import type { ResultData } from '~/services/resultSet/index';
 import type { ChatMessage } from '~/services/chat/index';
 import ChatWelcome from './ChatWelcome.vue';
 import ChatResultSet from './ChatResultSet.vue';
 import ChatMarkdownReport from './ChatMarkdownReport.vue';
-import ChatWorkflowTimeline from './ChatWorkflowTimeline.vue';
 import ChatStreamingReport from './ChatStreamingReport.vue';
-
-const TIMELINE_ABSORBED_TYPES = new Set([
-	'result-set',
-	'markdown-report',
-	'html',
-]);
 
 const store = useChatStore();
 const listRef = ref<HTMLElement | null>(null);
@@ -227,20 +199,7 @@ const filteredMessages = computed<ChatMessage[]>(() => {
 	const result: ChatMessage[] = [];
 	for (let i = 0; i < msgs.length; i++) {
 		const msg = msgs[i];
-		if (!msg) continue;
-		if (
-			msg.role === 'assistant' &&
-			TIMELINE_ABSORBED_TYPES.has(msg.messageType)
-		) {
-			const surroundHasTimeline = msgs.some(
-				(m, j) =>
-					j !== i &&
-					m.role === 'assistant' &&
-					m.messageType === 'timeline' &&
-					m.sessionId === msg.sessionId,
-			);
-			if (surroundHasTimeline) continue;
-		}
+		if (!msg || msg.messageType === 'timeline') continue;
 		result.push(msg);
 	}
 	return result;
@@ -273,16 +232,6 @@ function safeParseJson(content: string): ResultData | null {
 	}
 }
 
-function safeParseBlocks(content: string) {
-	try {
-		return JSON.parse(
-			content,
-		) as import('~/services/graph/index').GraphNodeResponse[][];
-	} catch {
-		return [];
-	}
-}
-
 function escapeHtml(text: string): string {
 	const div = document.createElement('div');
 	div.textContent = text;
@@ -306,7 +255,7 @@ watch(
 	},
 );
 watch(
-	() => store.nodeBlocks,
+	() => store.toolActivities,
 	() => scrollToBottom(),
 	{ deep: true },
 );
@@ -392,12 +341,10 @@ watch(
 	min-width: 0;
 }
 
-/* Timeline card: full width, let timeline handle its own padding */
-.timeline-card {
-	padding: 12px 14px;
-	max-width: 100% !important;
-	flex: 1;
-	min-width: 0;
+.tool-activity {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 /* ── Thinking dots ───────────────────────────────────────────────────────────── */

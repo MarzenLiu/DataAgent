@@ -1,25 +1,17 @@
-/*
- * Copyright 2026 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+/* * Copyright 2026 the original author or authors. * * Licensed under the
+Apache License, Version 2.0 (the "License"); * you may not use this file except
+in compliance with the License. * You may obtain a copy of the License at * *
+https://www.apache.org/licenses/LICENSE-2.0 * * Unless required by applicable
+law or agreed to in writing, software * distributed under the License is
+distributed on an "AS IS" BASIS, * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied. * See the License for the specific language governing
+permissions and * limitations under the License. */
 
 <template>
 	<div class="input-area">
 		<!-- Status / Info bar -->
 		<div class="status-bar">
 			<div class="status-chips">
-
 				<!-- Datasource selector -->
 				<div class="ds-chip-wrap" @click.stop>
 					<div
@@ -29,7 +21,9 @@
 					>
 						<v-icon size="13" color="#64748b">mdi-database-outline</v-icon>
 						<span>{{ store.activeDatasource?.name || '选择数据库' }}</span>
-						<v-icon size="13" color="#94a3b8">{{ showDsMenu ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+						<v-icon size="13" color="#94a3b8">{{
+							showDsMenu ? 'mdi-chevron-up' : 'mdi-chevron-down'
+						}}</v-icon>
 					</div>
 					<div v-if="showDsMenu" class="chip-dropdown">
 						<div
@@ -49,12 +43,18 @@
 				<div class="ds-chip-wrap" @click.stop>
 					<div
 						class="status-chip status-chip--model"
-						:class="{ disabled: store.isStreaming || store.chatModels.length === 0 }"
+						:class="{
+							disabled: store.isStreaming || store.chatModels.length === 0,
+						}"
 						@click="toggleModelMenu"
 					>
 						<v-icon size="13" color="#3b82f6">mdi-lightning-bolt</v-icon>
-						<span>{{ store.activeModelConfig?.modelName || '选择AI模型' }}</span>
-						<v-icon size="13" color="#94a3b8">{{ showModelMenu ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+						<span>{{
+							store.activeModelConfig?.modelName || '选择AI模型'
+						}}</span>
+						<v-icon size="13" color="#94a3b8">{{
+							showModelMenu ? 'mdi-chevron-up' : 'mdi-chevron-down'
+						}}</v-icon>
 					</div>
 					<div v-if="showModelMenu" class="chip-dropdown">
 						<div
@@ -69,7 +69,6 @@
 						</div>
 					</div>
 				</div>
-
 			</div>
 		</div>
 
@@ -91,7 +90,10 @@
 		<div class="action-bar">
 			<div class="action-bar-left">
 				<div class="extra-options">
-					<label class="option-chip" :class="{ active: store.requestOptions.humanFeedback }">
+					<label
+						class="option-chip"
+						:class="{ active: store.requestOptions.humanFeedback }"
+					>
 						<input
 							v-model="store.requestOptions.humanFeedback"
 							type="checkbox"
@@ -101,7 +103,10 @@
 						<v-icon size="11">mdi-account-check-outline</v-icon>
 						人工反馈
 					</label>
-					<label class="option-chip" :class="{ active: store.requestOptions.nl2sqlOnly }">
+					<label
+						class="option-chip"
+						:class="{ active: store.requestOptions.nl2sqlOnly }"
+					>
 						<input
 							v-model="store.requestOptions.nl2sqlOnly"
 							type="checkbox"
@@ -112,7 +117,10 @@
 						<v-icon size="11">mdi-database-search-outline</v-icon>
 						仅NL2SQL
 					</label>
-					<label class="option-chip" :class="{ active: store.requestOptions.showSqlResults }">
+					<label
+						class="option-chip"
+						:class="{ active: store.requestOptions.showSqlResults }"
+					>
 						<input
 							v-model="store.requestOptions.showSqlResults"
 							type="checkbox"
@@ -146,28 +154,42 @@
 		<Transition name="slide-up">
 			<div v-if="store.showHumanFeedback" class="human-feedback-panel">
 				<div class="feedback-header">
-					<v-icon color="warning" size="16" class="mr-1">mdi-account-question-outline</v-icon>
+					<v-icon color="warning" size="16" class="mr-1"
+						>mdi-account-question-outline</v-icon
+					>
 					<span>请确认工具执行</span>
 				</div>
-				<textarea
-					v-model="store.feedbackContent"
-					class="feedback-textarea"
-					rows="2"
-					placeholder="拒绝时可填写修改意见"
-				/>
+				<pre class="feedback-request">{{ store.pendingConfirmationText }}</pre>
 				<div class="feedback-actions">
-					<v-btn class="feedback-btn feedback-btn--once" @click="store.submitFeedback('once', store.feedbackContent)">
+					<v-btn
+						class="feedback-btn feedback-btn--once"
+						@click="store.submitFeedback('once')"
+					>
 						<v-icon size="14" class="mr-1">mdi-check</v-icon>仅批准本次
 					</v-btn>
-					<v-btn class="feedback-btn feedback-btn--tool-session" @click="store.submitFeedback('tool-session', store.feedbackContent)">
-						<v-icon size="14" class="mr-1">mdi-shield-check-outline</v-icon>本会话允许此类工具
+					<v-btn
+						class="feedback-btn feedback-btn--tool-session"
+						@click="store.submitFeedback('tool-session')"
+					>
+						<v-icon size="14" class="mr-1">mdi-shield-check-outline</v-icon
+						>本会话允许此类工具
 					</v-btn>
-					<v-btn class="feedback-btn feedback-btn--all-session" @click="store.submitFeedback('all-session', store.feedbackContent)">
-						<v-icon size="14" class="mr-1">mdi-shield-lock-open-outline</v-icon>本会话默认允许
+					<v-btn
+						class="feedback-btn feedback-btn--all-session"
+						@click="store.submitFeedback('all-session')"
+					>
+						<v-icon size="14" class="mr-1">mdi-shield-lock-open-outline</v-icon
+						>本会话默认允许
 					</v-btn>
-					<v-btn class="feedback-btn feedback-btn--reject" @click="store.submitFeedback('reject', store.feedbackContent)">
-						<v-icon size="14" class="mr-1">mdi-close</v-icon>拒绝并重规划
+					<v-btn
+						class="feedback-btn feedback-btn--reject"
+						@click="store.submitFeedback('reject')"
+					>
+						<v-icon size="14" class="mr-1">mdi-close</v-icon>拒绝
 					</v-btn>
+				</div>
+				<div class="feedback-hint">
+					如需说明原因，请在拒绝完成后发送下一条消息。
 				</div>
 			</div>
 		</Transition>
@@ -195,12 +217,12 @@ function toggleModelMenu() {
 	if (showModelMenu.value) showDsMenu.value = false;
 }
 
-async function selectDs(ds: typeof store.allDatasources[0]) {
+async function selectDs(ds: (typeof store.allDatasources)[0]) {
 	showDsMenu.value = false;
 	await store.switchDatasource(ds);
 }
 
-async function selectModel(m: typeof store.chatModels[0]) {
+async function selectModel(m: (typeof store.chatModels)[0]) {
 	showModelMenu.value = false;
 	if (m.id !== undefined) await store.switchModel(m.id);
 }
@@ -289,7 +311,9 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 	cursor: pointer;
 	user-select: none;
 	white-space: nowrap;
-	transition: border-color 0.1s, background 0.1s;
+	transition:
+		border-color 0.1s,
+		background 0.1s;
 }
 .status-chip:hover:not(.disabled) {
 	border-color: #94a3b8;
@@ -315,7 +339,7 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 	background: white;
 	border: 1px solid #e2e8f0;
 	border-radius: 10px;
-	box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 	min-width: 200px;
 	max-width: 300px;
 	max-height: 280px;
@@ -423,7 +447,9 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 	font-size: 12px;
 	color: #64748b;
 	cursor: pointer;
-	transition: border-color 0.1s, background 0.1s;
+	transition:
+		border-color 0.1s,
+		background 0.1s;
 	user-select: none;
 }
 .option-chip:hover {
@@ -455,7 +481,9 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 	font-size: 14px;
 	font-weight: 600;
 	cursor: pointer;
-	transition: background 0.15s, opacity 0.15s;
+	transition:
+		background 0.15s,
+		opacity 0.15s;
 	white-space: nowrap;
 }
 .send-btn:hover:not(:disabled) {
@@ -504,17 +532,17 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 	color: #92400e;
 	margin-bottom: 8px;
 }
-.feedback-textarea {
+.feedback-request {
 	width: 100%;
 	background: white;
 	border: 1px solid #fde68a;
 	border-radius: 6px;
 	padding: 8px 10px;
 	font-size: 13px;
-	resize: none;
-	outline: none;
 	color: #1e293b;
 	font-family: inherit;
+	white-space: pre-wrap;
+	word-break: break-word;
 	margin-bottom: 8px;
 }
 .feedback-actions {
@@ -553,12 +581,30 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 .feedback-btn:hover {
 	opacity: 0.85;
 }
+.feedback-hint {
+	margin-top: 8px;
+	font-size: 12px;
+	color: #92400e;
+}
 
 /* ── Transitions ─────────────────────────────────────────────────────────────── */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-.slide-up-enter-active, .slide-up-leave-active { transition: all 0.2s ease; }
-.slide-up-enter-from, .slide-up-leave-to { transform: translateY(10px); opacity: 0; }
+.fade-enter-active,
+.fade-leave-active {
+	transition: opacity 0.15s;
+}
+.fade-enter-from,
+.fade-leave-to {
+	opacity: 0;
+}
+.slide-up-enter-active,
+.slide-up-leave-active {
+	transition: all 0.2s ease;
+}
+.slide-up-enter-from,
+.slide-up-leave-to {
+	transform: translateY(10px);
+	opacity: 0;
+}
 
 @media (max-width: 768px) {
 	.input-area {

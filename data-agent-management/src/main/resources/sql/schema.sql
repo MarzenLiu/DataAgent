@@ -172,6 +172,47 @@ CREATE TABLE IF NOT EXISTS agent_tool (
   FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
 ) ENGINE = InnoDB COMMENT = '智能体MCP工具配置表';
 
+-- 数据库存储的 Harness Skill；与项目目录 Skill 组合加载，同名时数据库版本优先
+CREATE TABLE IF NOT EXISTS harness_skill (
+  id INT NOT NULL AUTO_INCREMENT,
+  skill_name VARCHAR(100) NOT NULL COMMENT 'Harness Skill名称',
+  description VARCHAR(500) NOT NULL COMMENT 'Skill简介',
+  content LONGTEXT NOT NULL COMMENT 'Skill指令正文',
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_harness_skill_name (skill_name),
+  INDEX idx_harness_skill_enabled (is_enabled)
+) ENGINE = InnoDB COMMENT = '数据库Harness技能定义表';
+
+CREATE TABLE IF NOT EXISTS harness_skill_resource (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  skill_id INT NOT NULL COMMENT 'Harness Skill ID',
+  resource_path VARCHAR(500) NOT NULL COMMENT 'Skill内相对资源路径',
+  content LONGTEXT NOT NULL COMMENT 'UTF-8文本资源内容',
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_harness_skill_resource (skill_id, resource_path),
+  FOREIGN KEY (skill_id) REFERENCES harness_skill(id) ON DELETE CASCADE
+) ENGINE = InnoDB COMMENT = '数据库Harness技能资源表';
+
+-- AgentScope 智能体技能配置：统一控制项目目录和数据库 Skill 的可见范围
+CREATE TABLE IF NOT EXISTS agent_skill (
+  id INT NOT NULL AUTO_INCREMENT,
+  agent_id INT NOT NULL COMMENT '智能体ID',
+  skill_name VARCHAR(100) NOT NULL COMMENT 'Harness Skill名称',
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '技能排序',
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_agent_skill (agent_id, skill_name),
+  INDEX idx_agent_skill_enabled (agent_id, is_enabled),
+  FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
+) ENGINE = InnoDB COMMENT = '智能体Harness技能配置表';
+
 -- 智能体预设问题表
 CREATE TABLE IF NOT EXISTS agent_preset_question (
   id INT NOT NULL AUTO_INCREMENT,

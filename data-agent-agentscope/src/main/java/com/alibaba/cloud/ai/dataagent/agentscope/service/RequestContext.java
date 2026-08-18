@@ -15,15 +15,11 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.service;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
-import io.agentscope.core.event.AgentEvent;
-import org.springframework.http.codec.ServerSentEvent;
-import reactor.core.publisher.Flux;
+import com.alibaba.cloud.ai.dataagent.agentscope.api.ConfirmationDecision;
 
-public interface AgentScopeSearchService {
-
-	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
-
-	void stop(String conversationId, String runId);
-
+/**
+ * Normalized context for one SSE execution; this transient value has no database table.
+ */
+record RequestContext(String agentIdText, long agentId, String conversationId, String runId, String query, boolean hitl,
+		boolean resuming, ConfirmationDecision confirmation, boolean nl2sqlOnly, ApprovalScope approvalScope) {
 }

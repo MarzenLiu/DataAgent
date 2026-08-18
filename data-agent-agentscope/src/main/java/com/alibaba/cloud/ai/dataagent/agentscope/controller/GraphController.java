@@ -15,9 +15,10 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.controller;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.GraphRequest;
-import com.alibaba.cloud.ai.dataagent.agentscope.api.GraphNodeResponse;
+import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
+import com.alibaba.cloud.ai.dataagent.agentscope.api.ConfirmationDecision;
 import com.alibaba.cloud.ai.dataagent.agentscope.service.AgentScopeSearchService;
+import io.agentscope.core.event.AgentEvent;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
@@ -43,24 +44,23 @@ public class GraphController {
 	}
 
 	@GetMapping(value = "/stream/search", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-	public Flux<ServerSentEvent<GraphNodeResponse>> streamSearch(@RequestParam("agentId") String agentId,
+	public Flux<ServerSentEvent<AgentEvent>> streamSearch(@RequestParam("agentId") String agentId,
 			@RequestParam(value = "conversationId", required = false) String conversationId,
-			@RequestParam(value = "threadId", required = false) String threadId, @RequestParam("query") String query,
-			@RequestParam(value = "humanFeedback", required = false) boolean humanFeedback,
-			@RequestParam(value = "humanFeedbackContent", required = false) String humanFeedbackContent,
-			@RequestParam(value = "rejectedPlan", required = false) boolean rejectedPlan,
+			@RequestParam(value = "runId", required = false) String runId, @RequestParam("query") String query,
+			@RequestParam(value = "hitl", required = false) boolean hitl,
+			@RequestParam(value = "confirmation", required = false) ConfirmationDecision confirmation,
 			@RequestParam(value = "nl2sqlOnly", required = false) boolean nl2sqlOnly, ServerHttpResponse response) {
 		response.getHeaders().setCacheControl("no-cache");
 		response.getHeaders().set("Connection", "keep-alive");
 		response.getHeaders().setAccessControlAllowOrigin("*");
-		return searchService.streamSearch(new GraphRequest(agentId, conversationId, threadId, query, humanFeedback,
-				humanFeedbackContent, rejectedPlan, nl2sqlOnly));
+		return searchService.streamSearch(
+				new AgentStreamRequest(agentId, conversationId, runId, query, hitl, confirmation, nl2sqlOnly));
 	}
 
 	@PostMapping("/stream/stop")
 	public ResponseEntity<Void> stopStream(@RequestParam("conversationId") String conversationId,
-			@RequestParam(value = "threadId", required = false) String threadId) {
-		searchService.stop(conversationId, StringUtils.hasText(threadId) ? threadId : null);
+			@RequestParam(value = "runId", required = false) String runId) {
+		searchService.stop(conversationId, StringUtils.hasText(runId) ? runId : null);
 		return ResponseEntity.noContent().build();
 	}
 

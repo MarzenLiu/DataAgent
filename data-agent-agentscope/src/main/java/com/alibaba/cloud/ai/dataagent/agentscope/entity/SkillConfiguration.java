@@ -13,14 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.agentscope.api;
+package com.alibaba.cloud.ai.dataagent.agentscope.entity;
 
-public enum GraphEventType {
+import java.time.LocalDateTime;
 
-	NODE_OUTPUT,
-
-	FINAL_ANSWER,
-
-	HUMAN_FEEDBACK_REQUIRED
-
+/**
+ * Runtime-visible Harness skill assigned to an agent.
+ *
+ * <p>
+ * Database sources: {@code agent_skill.skill_name} and, for database-backed skills,
+ * {@code harness_skill.update_time}. A missing database timestamp identifies a skill
+ * loaded from the configured project directory.
+ *
+ * @param skillName Harness skill name
+ * @param databaseUpdatedAt database skill revision, or {@code null} for a directory skill
+ */
+public record SkillConfiguration(String skillName, LocalDateTime databaseUpdatedAt) {
 }

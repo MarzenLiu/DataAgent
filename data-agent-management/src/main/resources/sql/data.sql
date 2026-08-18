@@ -18,6 +18,22 @@ INSERT INTO `agent_tool` (`agent_id`, `tool_name`, `approval_mode`, `inject_agen
 (5, 'search_products', 'ALLOW', 1, 1, 1, 10), (5, 'place_order', 'ALWAYS_ASK', 1, 0, 1, 20)
 ON DUPLICATE KEY UPDATE approval_mode=VALUES(approval_mode), inject_agent_id=VALUES(inject_agent_id), available_in_nl2sql_only=VALUES(available_in_nl2sql_only), is_enabled=VALUES(is_enabled), sort_order=VALUES(sort_order), update_time=NOW();
 
+INSERT INTO `harness_skill` (`skill_name`, `description`, `content`, `is_enabled`) VALUES
+('result-validation-sop', '在输出分析结论前校验查询结果的完整性、粒度和口径。', '# 查询结果校验流程
+
+1. 确认查询结果的时间范围、过滤条件和分组粒度与用户问题一致。
+2. 检查空值、重复行、异常值以及合计与明细是否一致。
+3. 区分数据库返回的事实、基于事实的计算和无法验证的推断。
+4. 发现口径冲突或数据不足时明确说明，不要补造结果。', 1)
+ON DUPLICATE KEY UPDATE description=VALUES(description), content=VALUES(content), is_enabled=VALUES(is_enabled), update_time=NOW();
+
+INSERT INTO `agent_skill` (`agent_id`, `skill_name`, `is_enabled`, `sort_order`) VALUES
+(1, 'data-analysis-sop', 1, 10), (1, 'result-validation-sop', 1, 20),
+(2, 'data-analysis-sop', 1, 10), (2, 'result-validation-sop', 1, 20),
+(3, 'data-analysis-sop', 1, 10), (3, 'result-validation-sop', 1, 20),
+(4, 'data-analysis-sop', 1, 10), (4, 'result-validation-sop', 1, 20)
+ON DUPLICATE KEY UPDATE is_enabled=VALUES(is_enabled), sort_order=VALUES(sort_order), update_time=NOW();
+
 -- 业务知识示例数据
 -- 参考 KNOWLEDGE_USAGE.md：业务名称用标准术语，描述要"讲人话"说明计算公式和过滤条件，同义词枚举所有可能叫法
 INSERT INTO `business_knowledge` (`id`, `business_term`, `description`, `synonyms`, `is_recall`, `agent_id`, `created_time`, `updated_time`, `embedding_status`) VALUES

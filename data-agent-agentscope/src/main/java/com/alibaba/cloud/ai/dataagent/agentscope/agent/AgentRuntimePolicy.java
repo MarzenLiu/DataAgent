@@ -1,9 +1,9 @@
 package com.alibaba.cloud.ai.dataagent.agentscope.agent;
 
+import com.alibaba.cloud.ai.dataagent.agentscope.entity.AgentConfiguration;
+import com.alibaba.cloud.ai.dataagent.agentscope.entity.ApprovalMode;
+import com.alibaba.cloud.ai.dataagent.agentscope.entity.ToolConfiguration;
 import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository;
-import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository.AgentConfiguration;
-import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository.ApprovalMode;
-import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository.ToolConfiguration;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.permission.PermissionBehavior;
 import io.agentscope.core.permission.PermissionContextState;
@@ -47,8 +47,8 @@ public class AgentRuntimePolicy {
 		copySessionRules(current.getDenyRules(), builder::addDenyRule);
 		copySessionRules(current.getAskRules(), builder::addAskRule);
 		if (sessionBypass && !sessionAllowed.contains(SESSION_BYPASS_MARKER)) {
-			builder.addAllowRule(SESSION_BYPASS_MARKER, new PermissionRule(SESSION_BYPASS_MARKER, null,
-					PermissionBehavior.ALLOW, "session"));
+			builder.addAllowRule(SESSION_BYPASS_MARKER,
+					new PermissionRule(SESSION_BYPASS_MARKER, null, PermissionBehavior.ALLOW, "session"));
 		}
 		for (ToolConfiguration tool : configuration.tools()) {
 			applyToolPolicy(builder, tool, sessionAllowed, sessionDenied, hitl, nl2sqlOnly);
@@ -59,24 +59,26 @@ public class AgentRuntimePolicy {
 	private void applyToolPolicy(PermissionContextState.Builder builder, ToolConfiguration tool,
 			Set<String> sessionAllowed, Set<String> sessionDenied, boolean hitl, boolean nl2sqlOnly) {
 		if (nl2sqlOnly && !tool.availableInNl2sqlOnly()) {
-			builder.addDenyRule(tool.toolName(), new PermissionRule(tool.toolName(), null,
-					PermissionBehavior.DENY, "request-mode"));
+			builder.addDenyRule(tool.toolName(),
+					new PermissionRule(tool.toolName(), null, PermissionBehavior.DENY, "request-mode"));
 			return;
 		}
-		if (sessionAllowed.contains(tool.toolName()) || sessionDenied.contains(tool.toolName())) return;
-		if (tool.approvalMode() == ApprovalMode.ALLOW
-				|| tool.approvalMode() == ApprovalMode.ASK_WHEN_HITL && !hitl) {
-			builder.addAllowRule(tool.toolName(), new PermissionRule(tool.toolName(), null,
-					PermissionBehavior.ALLOW, "agent-tool-config"));
+		if (sessionAllowed.contains(tool.toolName()) || sessionDenied.contains(tool.toolName())) {
+			return;
+		}
+		if (tool.approvalMode() == ApprovalMode.ALLOW || tool.approvalMode() == ApprovalMode.ASK_WHEN_HITL && !hitl) {
+			builder.addAllowRule(tool.toolName(),
+					new PermissionRule(tool.toolName(), null, PermissionBehavior.ALLOW, "agent-tool-config"));
 		}
 		else {
-			builder.addAskRule(tool.toolName(), new PermissionRule(tool.toolName(), null,
-					PermissionBehavior.ASK, "agent-tool-config"));
+			builder.addAskRule(tool.toolName(),
+					new PermissionRule(tool.toolName(), null, PermissionBehavior.ASK, "agent-tool-config"));
 		}
 	}
 
 	private Set<String> sessionRuleTools(Map<String, List<PermissionRule>> rules) {
-		return rules.entrySet().stream()
+		return rules.entrySet()
+			.stream()
 			.filter(entry -> entry.getValue().stream().anyMatch(rule -> "session".equals(rule.source())))
 			.map(Map.Entry::getKey)
 			.collect(Collectors.toSet());
@@ -88,4 +90,5 @@ public class AgentRuntimePolicy {
 			.filter(rule -> "session".equals(rule.source()))
 			.forEach(rule -> consumer.accept(toolName, rule)));
 	}
+
 }

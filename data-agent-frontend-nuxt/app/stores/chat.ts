@@ -20,10 +20,10 @@ import chatService, {
 	type ChatMessage,
 } from '~/services/chat/index';
 import graphService, {
-	type GraphRequest,
-	type GraphNodeResponse,
-	GraphEventType,
-	TextType,
+	type AgentStreamRequest,
+	type AgentStreamEvent,
+	type AgentToolActivity,
+	ConfirmationDecision,
 } from '~/services/graph/index';
 import agentDatasourceService from '~/services/agentDatasource/index';
 import { useSessionStateManager } from '~/services/sessionStateManager/index';
@@ -34,7 +34,11 @@ import datasourceService, {
 	type Datasource as BaseDatasource,
 } from '~/services/datasource/index';
 import { resolveActiveDatasource } from '~/utils/datasourceSelection';
-import { applyReportContent } from '~/utils/reportTimeline';
+import {
+	agentResultText,
+	describeConfirmation,
+	visibleToolLabel,
+} from '~/utils/agentEvents';
 
 export type Datasource = BaseDatasource & { isActive?: boolean };
 
@@ -58,12 +62,12 @@ export const useChatStore = defineStore('chat', () => {
 
 	// ── Streaming state ─────────────────────────────────────────────────────────
 	const isStreaming = ref(false);
-	const nodeBlocks = ref<GraphNodeResponse[][]>([]);
+	const toolActivities = ref<AgentToolActivity[]>([]);
 
 	// ── Human feedback state ────────────────────────────────────────────────────
 	const showHumanFeedback = ref(false);
-	const lastRequest = ref<GraphRequest | null>(null);
-	const feedbackContent = ref('');
+	const lastRequest = ref<AgentStreamRequest | null>(null);
+	const pendingConfirmationText = ref('');
 
 	// ── Request options ─────────────────────────────────────────────────────────
 	const requestOptions = ref<ChatRequestOptions>({
@@ -251,10 +255,10 @@ export const useChatStore = defineStore('chat', () => {
 	async function selectSession(session: ChatSession) {
 		// Save current session state
 		if (currentSession.value) {
-			saveViewToState(currentSession.value.id, { isStreaming, nodeBlocks });
+			saveViewToState(currentSession.value.id, { isStreaming, toolActivities });
 		}
 		currentSession.value = session;
-		syncStateToView(session.id, { isStreaming, nodeBlocks });
+		syncStateToView(session.id, { isStreaming, toolActivities });
 		currentMessages.value = await chatService.getSessionMessages(session.id);
 	}
 
@@ -279,7 +283,7 @@ export const useChatStore = defineStore('chat', () => {
 			currentSession.value = null;
 			currentMessages.value = [];
 			isStreaming.value = false;
-			nodeBlocks.value = [];
+			toolActivities.value = [];
 		}
 	}
 
@@ -290,7 +294,7 @@ export const useChatStore = defineStore('chat', () => {
 		currentSession.value = null;
 		currentMessages.value = [];
 		isStreaming.value = false;
-		nodeBlocks.value = [];
+		toolActivities.value = [];
 	}
 
 	// ── Message send & stream ───────────────────────────────────────────────────
@@ -313,23 +317,20 @@ export const useChatStore = defineStore('chat', () => {
 		);
 		currentMessages.value.push(saved);
 
-		const request: GraphRequest = {
+		const request: AgentStreamRequest = {
 			agentId: String(currentAgentId.value || ''),
 			conversationId: currentSession.value.id,
 			query,
-			humanFeedback: requestOptions.value.humanFeedback,
+			hitl: requestOptions.value.humanFeedback,
 			nl2sqlOnly: requestOptions.value.nl2sqlOnly,
-			rejectedPlan: false,
-			humanFeedbackContent: undefined,
-			// A normal message starts a fresh graph run. The backend returns its run ID
-			// and submitFeedback reuses it only when resuming an interrupted graph.
-			threadId: undefined,
+			runId: undefined,
+			confirmation: undefined,
 		};
 
 		await _sendGraphRequest(request);
 	}
 
-	async function _sendGraphRequest(request: GraphRequest) {
+	async function _sendGraphRequest(request: AgentStreamRequest) {
 		const session = currentSession.value;
 		if (!session) return;
 
@@ -339,19 +340,16 @@ export const useChatStore = defineStore('chat', () => {
 
 		lastRequest.value = request;
 		isStreaming.value = true;
-		nodeBlocks.value = [];
+		toolActivities.value = [];
+		pendingConfirmationText.value = '';
 
 		sessionState.isStreaming = true;
-		sessionState.nodeBlocks = [];
+		sessionState.toolActivities = [];
 		sessionState.lastRequest = request;
-		sessionState.htmlReportContent = '';
-		sessionState.htmlReportSize = 0;
 		sessionState.markdownReportContent = '';
 		streamingReportContent.value = '';
 		isReportStreaming.value = false;
 
-		let currentStepId: string | null = null;
-		let currentBlockIndex = -1;
 		let finalReply: string | null = null;
 		let awaitingHumanFeedback = false;
 
@@ -361,7 +359,7 @@ export const useChatStore = defineStore('chat', () => {
 			viewSyncRafId = requestAnimationFrame(() => {
 				viewSyncRafId = null;
 				if (currentSession.value?.id === sessionId) {
-					nodeBlocks.value = [...sessionState.nodeBlocks];
+					toolActivities.value = [...sessionState.toolActivities];
 				}
 			});
 		}
@@ -392,7 +390,7 @@ export const useChatStore = defineStore('chat', () => {
 				reportSyncTimer = null;
 			}
 			if (currentSession.value?.id === sessionId) {
-				nodeBlocks.value = [...sessionState.nodeBlocks];
+				toolActivities.value = [...sessionState.toolActivities];
 				if (sessionState.markdownReportContent) {
 					isReportStreaming.value = true;
 					streamingReportContent.value = sessionState.markdownReportContent;
@@ -402,75 +400,64 @@ export const useChatStore = defineStore('chat', () => {
 
 		const closeStream = await graphService.streamSearch(
 			request,
-			async (response: GraphNodeResponse) => {
-				if (response.error) return;
-				if (sessionState.lastRequest)
-					sessionState.lastRequest.threadId = response.threadId;
-				if (response.eventType === GraphEventType.FINAL_ANSWER) {
-					finalReply = response.text?.trim() || null;
+			async (event: AgentStreamEvent) => {
+				if (event.type === 'CUSTOM' && event.name === 'run_started') {
+					const runId = String(event.value?.runId || '');
+					if (runId && sessionState.lastRequest) {
+						sessionState.lastRequest.runId = runId;
+						lastRequest.value = sessionState.lastRequest;
+					}
 					return;
 				}
-				if (response.eventType === GraphEventType.HUMAN_FEEDBACK_REQUIRED) {
-					awaitingHumanFeedback = true;
-					if (response.text) {
-						sessionState.nodeBlocks.push([{ ...response, nodeName: 'SqlExecuteNode' }]);
+				if (event.type === 'TEXT_BLOCK_DELTA' && event.delta) {
+					sessionState.markdownReportContent += event.delta;
+					scheduleReportSync();
+					return;
+				}
+				if (
+					event.type === 'TOOL_CALL_START' &&
+					event.toolCallId &&
+					event.toolCallName
+				) {
+					const label = visibleToolLabel(event.toolCallName);
+					if (label) {
+						sessionState.toolActivities.push({
+							id: event.toolCallId,
+							name: event.toolCallName,
+							label,
+							status: 'running',
+						});
 						scheduleViewSync();
 					}
 					return;
 				}
-
-				const responseStepId =
-					response.stepId || `${response.nodeName}:${response.attempt || 1}`;
-				const isNewStep = currentStepId !== responseStepId;
-				if (isNewStep) {
-					sessionState.nodeBlocks.push([{ ...response }]);
-					currentBlockIndex = sessionState.nodeBlocks.length - 1;
-					currentStepId = responseStepId;
-				}
-				const currentBlock = sessionState.nodeBlocks[currentBlockIndex];
-
-				if (
-					response.nodeName === 'ReportGeneratorNode' ||
-					response.nodeName === 'ReportRevisionNode'
-				) {
-					if (response.textType === 'HTML') {
-						sessionState.htmlReportContent += response.text;
-						sessionState.htmlReportSize = sessionState.htmlReportContent.length;
-						const rn = currentBlock;
-						if (rn)
-							rn[0].text = `正在收集HTML报告... 已收集 ${sessionState.htmlReportSize} 字节`;
-					} else if (response.textType === 'MARK_DOWN') {
-						sessionState.markdownReportContent += response.text;
-						scheduleReportSync();
-						applyReportContent(
-							currentBlock,
-							sessionState.markdownReportContent,
-							TextType.MARK_DOWN,
-						);
+				if (event.type === 'TOOL_RESULT_END' && event.toolCallId) {
+					const activity = sessionState.toolActivities.find(
+						(item) => item.id === event.toolCallId,
+					);
+					if (activity) {
+						activity.status =
+							event.state === 'success' ? 'completed' : 'failed';
+						scheduleViewSync();
 					}
-				} else if (response.textType === TextType.RESULT_SET) {
-					if (!isNewStep && currentBlock) currentBlock.push({ ...response });
-				} else if (!isNewStep && currentBlock) {
-					currentBlock.push({ ...response });
+					return;
 				}
-
-				scheduleViewSync();
+				if (event.type === 'REQUIRE_USER_CONFIRM') {
+					awaitingHumanFeedback = true;
+					pendingConfirmationText.value = describeConfirmation(event);
+					return;
+				}
+				if (event.type === 'AGENT_RESULT') {
+					finalReply = agentResultText(event).trim() || null;
+					if (finalReply) {
+						sessionState.markdownReportContent = finalReply;
+						scheduleReportSync();
+					}
+				}
 			},
 			async (error: Error) => {
 				console.error('Stream error:', error);
 				flushPendingSync();
-
-				if (sessionState.nodeBlocks.length > 0) {
-					const msg: ChatMessage = {
-						sessionId,
-						role: 'assistant',
-						content: JSON.stringify(sessionState.nodeBlocks),
-						messageType: 'timeline',
-					};
-					await chatService
-						.saveMessage(sessionId, msg)
-						.catch((e) => console.error(e));
-				}
 
 				// Save error message
 				const errorMsg: ChatMessage = {
@@ -485,7 +472,6 @@ export const useChatStore = defineStore('chat', () => {
 
 				sessionState.isStreaming = false;
 				sessionState.closeStream = null;
-				currentStepId = null;
 				if (currentSession.value?.id === sessionId) {
 					isStreaming.value = false;
 					isReportStreaming.value = false;
@@ -496,23 +482,6 @@ export const useChatStore = defineStore('chat', () => {
 			},
 			async () => {
 				flushPendingSync();
-				if (sessionState.nodeBlocks.length > 0) {
-					const timelineMsg: ChatMessage = {
-						sessionId,
-						role: 'assistant',
-						content: JSON.stringify(sessionState.nodeBlocks),
-						messageType: 'timeline',
-					};
-					const savedTimeline = await chatService
-						.saveMessage(sessionId, timelineMsg)
-						.catch((e) => {
-							console.error(e);
-							return null;
-						});
-					if (savedTimeline && currentSession.value?.id === sessionId)
-						currentMessages.value.push(savedTimeline);
-				}
-
 				if (finalReply) {
 					const replyMessage: ChatMessage = {
 						sessionId,
@@ -537,13 +506,12 @@ export const useChatStore = defineStore('chat', () => {
 					streamingReportContent.value = '';
 				}
 
-				currentStepId = null;
 				await closeStream();
 				sessionState.closeStream = null;
 				if (currentSession.value?.id === sessionId) {
 					currentMessages.value =
 						await chatService.getSessionMessages(sessionId);
-					nodeBlocks.value = [];
+					toolActivities.value = [];
 				}
 				console.log(`会话[${sessionTitle}]处理完成`);
 			},
@@ -564,7 +532,7 @@ export const useChatStore = defineStore('chat', () => {
 		}
 		sessionState.closeStream = null;
 		sessionState.isStreaming = false;
-		sessionState.nodeBlocks = [];
+		sessionState.toolActivities = [];
 
 		// Save user-terminated warning message
 		const warningMsg: ChatMessage = {
@@ -579,7 +547,7 @@ export const useChatStore = defineStore('chat', () => {
 
 		if (currentSession.value?.id === sessionId) {
 			isStreaming.value = false;
-			nodeBlocks.value = [];
+			toolActivities.value = [];
 			isReportStreaming.value = false;
 			streamingReportContent.value = '';
 			currentMessages.value = await chatService.getSessionMessages(sessionId);
@@ -588,22 +556,19 @@ export const useChatStore = defineStore('chat', () => {
 
 	type HitlDecision = 'once' | 'tool-session' | 'all-session' | 'reject';
 
-	async function submitFeedback(decision: HitlDecision, content: string) {
+	async function submitFeedback(decision: HitlDecision) {
 		if (!lastRequest.value) return;
 		showHumanFeedback.value = false;
-		feedbackContent.value = '';
-		const rejected = decision === 'reject';
-		const approvalContent = {
-			once: 'HITL_APPROVE_ONCE',
-			'tool-session': 'HITL_APPROVE_TOOL_FOR_SESSION',
-			'all-session': 'HITL_APPROVE_ALL_FOR_SESSION',
+		pendingConfirmationText.value = '';
+		const confirmations = {
+			once: ConfirmationDecision.APPROVE_ONCE,
+			'tool-session': ConfirmationDecision.APPROVE_TOOL_FOR_SESSION,
+			'all-session': ConfirmationDecision.APPROVE_ALL_FOR_SESSION,
+			reject: ConfirmationDecision.REJECT,
 		} as const;
-		const newRequest: GraphRequest = {
+		const newRequest: AgentStreamRequest = {
 			...lastRequest.value,
-			rejectedPlan: rejected,
-			humanFeedbackContent: rejected
-				? content || '请重新规划，不要执行当前操作。'
-				: approvalContent[decision],
+			confirmation: confirmations[decision],
 		};
 		await _sendGraphRequest(newRequest);
 	}
@@ -625,10 +590,10 @@ export const useChatStore = defineStore('chat', () => {
 		currentSession,
 		currentMessages,
 		isStreaming,
-		nodeBlocks,
+		toolActivities,
 		showHumanFeedback,
 		lastRequest,
-		feedbackContent,
+		pendingConfirmationText,
 		requestOptions,
 		reportFormat,
 		showReportFullscreen,

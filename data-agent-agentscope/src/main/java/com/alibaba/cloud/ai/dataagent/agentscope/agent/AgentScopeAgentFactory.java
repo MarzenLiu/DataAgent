@@ -16,12 +16,14 @@
 package com.alibaba.cloud.ai.dataagent.agentscope.agent;
 
 import com.alibaba.cloud.ai.dataagent.agentscope.config.AgentScopeDataAgentProperties;
+import com.alibaba.cloud.ai.dataagent.agentscope.entity.AgentConfiguration;
+import com.alibaba.cloud.ai.dataagent.agentscope.entity.ModelSettings;
+import com.alibaba.cloud.ai.dataagent.agentscope.entity.SkillConfiguration;
+import com.alibaba.cloud.ai.dataagent.agentscope.entity.ToolConfiguration;
 import com.alibaba.cloud.ai.dataagent.agentscope.observability.LangfuseAgentScopeMiddleware;
 import com.alibaba.cloud.ai.dataagent.agentscope.observability.LangfuseTelemetry;
 import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository;
-import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository.ModelSettings;
-import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository.AgentConfiguration;
-import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository.ToolConfiguration;
+import com.alibaba.cloud.ai.dataagent.agentscope.repository.DatabaseSkillRepository;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.permission.PermissionContextState;
@@ -36,11 +38,12 @@ import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -51,7 +54,10 @@ public class AgentScopeAgentFactory {
 	private final DataAgentRegistryRepository repository;
 
 	private final AgentScopeDataAgentProperties properties;
+
 	private final DataAgentMcpClientFactory mcpClientFactory;
+
+	private final DatabaseSkillRepository databaseSkillRepository;
 
 	private final LangfuseTelemetry langfuseTelemetry;
 
@@ -64,11 +70,12 @@ public class AgentScopeAgentFactory {
 	private final Map<AgentKey, AgentHolder> agents = new ConcurrentHashMap<>();
 
 	public AgentScopeAgentFactory(DataAgentRegistryRepository repository, AgentScopeDataAgentProperties properties,
-			DataAgentMcpClientFactory mcpClientFactory, LangfuseTelemetry langfuseTelemetry,
-			LangfuseAgentScopeMiddleware langfuseMiddleware) {
+			DataAgentMcpClientFactory mcpClientFactory, DatabaseSkillRepository databaseSkillRepository,
+			LangfuseTelemetry langfuseTelemetry, LangfuseAgentScopeMiddleware langfuseMiddleware) {
 		this.repository = repository;
 		this.properties = properties;
 		this.mcpClientFactory = mcpClientFactory;
+		this.databaseSkillRepository = databaseSkillRepository;
 		this.langfuseTelemetry = langfuseTelemetry;
 		this.langfuseMiddleware = langfuseMiddleware;
 		Path stateDirectory = properties.getStateDirectory().toAbsolutePath().normalize();
@@ -92,21 +99,21 @@ public class AgentScopeAgentFactory {
 		String fingerprint = modelSettings + "|" + configuration;
 		AgentKey key = new AgentKey(agentId);
 		AgentHolder holder = agents.compute(key, (ignored, existing) -> {
-			if (existing != null && existing.fingerprint.equals(fingerprint)) {
+			if (existing != null && existing.fingerprint().equals(fingerprint)) {
 				return existing;
 			}
 			if (existing != null) {
-				existing.agent.close();
+				existing.agent().close();
 			}
 			return new AgentHolder(fingerprint, createAgent(agentId, configuration, modelSettings));
 		});
-		return holder.agent;
+		return holder.agent();
 	}
 
-	private HarnessAgent createAgent(long agentId,
-			AgentConfiguration configuration, ModelSettings settings) {
+	private HarnessAgent createAgent(long agentId, AgentConfiguration configuration, ModelSettings settings) {
 		Toolkit toolkit = new Toolkit();
 		List<String> enabledTools = configuration.tools().stream().map(ToolConfiguration::toolName).toList();
+		List<String> enabledSkills = configuration.skills().stream().map(SkillConfiguration::skillName).toList();
 		if (!enabledTools.isEmpty()) {
 			McpClientWrapper mcpClient = mcpClientFactory.connect();
 			Map<String, Map<String, Object>> presetParameters = presetParameters(configuration.tools(), agentId);
@@ -144,14 +151,42 @@ public class AgentScopeAgentFactory {
 			.disableToolsConfig()
 			.disableAtPathExpansion()
 			.disableWorkspaceContext()
-			.permissionContext(PermissionContextState.builder().mode(PermissionMode.DEFAULT).build())
-			.middleware(new StopOnAllDeniedMiddleware());
+			.permissionContext(PermissionContextState.builder().mode(PermissionMode.DEFAULT).build());
+		configureSkills(builder, enabledSkills);
 		if (langfuseTelemetry.isEnabled()) {
 			builder.middleware(langfuseTelemetry.getAgentScopeTracingMiddleware()).middleware(langfuseMiddleware);
 		}
-		HarnessAgent agent = builder.build();
-		pruneHarnessTools(agent, Set.copyOf(enabledTools));
-		return agent;
+		return builder.build();
+	}
+
+	private void configureSkills(HarnessAgent.Builder builder, List<String> enabledSkills) {
+		if (enabledSkills.isEmpty()) {
+			return;
+		}
+		Path skillsDirectory = properties.getSkillsDirectory().toAbsolutePath().normalize();
+		boolean hasProjectDirectory = Files.isDirectory(skillsDirectory);
+		Set<String> databaseSkills = new HashSet<>(databaseSkillRepository.getAllSkillNames());
+		boolean usesDatabaseSkills = false;
+		if (hasProjectDirectory) {
+			builder.projectGlobalSkillsDir(skillsDirectory);
+		}
+		for (String skillName : enabledSkills) {
+			if (!StringUtils.hasText(skillName)) {
+				throw new IllegalStateException("Configured Harness skill name must not be blank");
+			}
+			boolean databaseSkill = databaseSkills.contains(skillName);
+			usesDatabaseSkills = usesDatabaseSkills || databaseSkill;
+			Path skillFile = skillsDirectory.resolve(skillName).resolve("SKILL.md").normalize();
+			boolean projectSkill = hasProjectDirectory && skillFile.startsWith(skillsDirectory)
+					&& Files.isRegularFile(skillFile);
+			if (!databaseSkill && !projectSkill) {
+				throw new IllegalStateException("Configured Harness skill was not found: " + skillName);
+			}
+		}
+		if (usesDatabaseSkills) {
+			builder.skillRepository(databaseSkillRepository);
+		}
+		builder.enableSkills(enabledSkills.toArray(String[]::new));
 	}
 
 	private Map<String, Map<String, Object>> presetParameters(List<ToolConfiguration> tools, long agentId) {
@@ -166,14 +201,6 @@ public class AgentScopeAgentFactory {
 			}
 		}
 		return result;
-	}
-
-	private void pruneHarnessTools(HarnessAgent agent, Set<String> enabledTools) {
-		for (String toolName : Set.copyOf(agent.getToolkit().getToolNames())) {
-			if (!enabledTools.contains(toolName)) {
-				agent.getToolkit().removeTool(toolName);
-			}
-		}
 	}
 
 	private Model createModel(ModelSettings settings) {
@@ -220,12 +247,6 @@ public class AgentScopeAgentFactory {
 
 	private String value(String value) {
 		return value == null ? "" : value;
-	}
-
-	private record AgentKey(long agentId) {
-	}
-
-	private record AgentHolder(String fingerprint, HarnessAgent agent) {
 	}
 
 }

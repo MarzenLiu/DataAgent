@@ -13,17 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.agentscope.service;
-
-import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
-import io.agentscope.core.event.AgentEvent;
-import org.springframework.http.codec.ServerSentEvent;
-import reactor.core.publisher.Flux;
-
-public interface AgentScopeSearchService {
-
-	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
-
-	void stop(String conversationId, String runId);
-
-}
+/**
+ * Business entities and database read models used by the AgentScope module.
+ *
+ * <p>
+ * The package contains projections and aggregates sourced from {@code agent},
+ * {@code agent_tool}, {@code agent_skill}, {@code harness_skill},
+ * {@code harness_skill_resource}, and {@code model_config}. Each record is declared in
+ * its own source file, and each type documents whether it maps directly to a table or
+ * combines multiple configuration sources.
+ */
+package com.alibaba.cloud.ai.dataagent.agentscope.entity;

@@ -15,21 +15,20 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.service;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentScopeAgentFactory;
-import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentRuntimePolicy;
 import static com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentRuntimePolicy.SESSION_BYPASS_MARKER;
-import com.alibaba.cloud.ai.dataagent.agentscope.api.GraphNodeResponse;
-import com.alibaba.cloud.ai.dataagent.agentscope.api.GraphRequest;
-import com.alibaba.cloud.ai.dataagent.agentscope.api.TextType;
+
+import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentRuntimePolicy;
+import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentScopeAgentFactory;
+import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
+import com.alibaba.cloud.ai.dataagent.agentscope.api.ConfirmationDecision;
 import com.alibaba.cloud.ai.dataagent.agentscope.observability.LangfuseTraceService;
 import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.event.ConfirmResult;
+import io.agentscope.core.event.CustomEvent;
 import io.agentscope.core.event.RequireUserConfirmEvent;
-import io.agentscope.core.event.TextBlockDeltaEvent;
-import io.agentscope.core.event.ToolCallStartEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.ToolCallState;
@@ -41,10 +40,13 @@ import io.agentscope.core.permission.PermissionMode;
 import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.harness.agent.HarnessAgent;
-
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -55,13 +57,16 @@ import reactor.core.scheduler.Schedulers;
 @Service
 public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 
-	static final String APPROVE_ONCE = "HITL_APPROVE_ONCE";
+	private static final Logger LOGGER = LoggerFactory.getLogger(AgentScopeSearchServiceImpl.class);
 
-	static final String APPROVE_TOOL_FOR_SESSION = "HITL_APPROVE_TOOL_FOR_SESSION";
+	static final String RUN_STARTED = "run_started";
 
-	static final String APPROVE_ALL_FOR_SESSION = "HITL_APPROVE_ALL_FOR_SESSION";
+	static final String STREAM_COMPLETED = "stream_completed";
+
+	static final String STREAM_ERROR = "stream_error";
 
 	private final AgentScopeAgentFactory agentFactory;
+
 	private final AgentRuntimePolicy runtimePolicy;
 
 	private final DataAgentRegistryRepository repository;
@@ -81,109 +86,80 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 	}
 
 	@Override
-	public Flux<ServerSentEvent<GraphNodeResponse>> streamSearch(GraphRequest request) {
+	public Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request) {
 		RequestContext context;
 		try {
 			context = normalize(request);
 		}
 		catch (RuntimeException ex) {
-			return errorFlux(request.agentId(), request.threadId(), ex);
+			String agentId = request == null ? null : request.agentId();
+			String runId = request == null ? null : request.runId();
+			String conversationId = request == null ? null : request.conversationId();
+			LOGGER.warn("Rejected AgentScope stream request, agentId={}, conversationId={}, runId={}", agentId,
+					conversationId, runId, ex);
+			return errorFlux(agentId, runId, ex);
 		}
-		Mono<Void> cancelSignal = runRegistry.register(context.threadId(), context.conversationId());
-		Flux<ServerSentEvent<GraphNodeResponse>> stream = Flux.defer(() -> executionStream(context))
+		Mono<Void> cancelSignal = runRegistry.register(context.runId(), context.conversationId());
+		Flux<ServerSentEvent<AgentEvent>> stream = Flux.defer(() -> executionStream(context))
 			.subscribeOn(Schedulers.boundedElastic())
-			.onErrorResume(ex -> errorFlux(context.agentIdText(), context.threadId(), ex));
-		Flux<ServerSentEvent<GraphNodeResponse>> cancellable = stream.takeUntilOther(cancelSignal)
-			.doFinally(signal -> runRegistry.remove(context.threadId()));
-		return langfuseTraceService.trace(request, context.agentIdText(), context.conversationId(), context.threadId(),
+			.doOnError(ex -> LOGGER.error("AgentScope stream failed, agentId={}, conversationId={}, runId={}",
+					context.agentIdText(), context.conversationId(), context.runId(), ex))
+			.onErrorResume(ex -> errorFlux(context.agentIdText(), context.runId(), ex));
+		Flux<ServerSentEvent<AgentEvent>> cancellable = stream.takeUntilOther(cancelSignal)
+			.doFinally(signal -> runRegistry.remove(context.runId()));
+		return langfuseTraceService.trace(request, context.agentIdText(), context.conversationId(), context.runId(),
 				context.hitl(), cancellable);
 	}
 
 	@Override
-	public void stop(String conversationId, String threadId) {
-		runRegistry.stop(conversationId, threadId);
+	public void stop(String conversationId, String runId) {
+		runRegistry.stop(conversationId, runId);
 	}
 
-	private Flux<ServerSentEvent<GraphNodeResponse>> executionStream(RequestContext context) {
+	private Flux<ServerSentEvent<AgentEvent>> executionStream(RequestContext context) {
 		HarnessAgent agent = agentFactory.get(context.agentId());
-		AtomicReference<String> result = new AtomicReference<>("");
-		AtomicBoolean paused = new AtomicBoolean();
 		RuntimeContext runtime = runtimeContext(context);
-		if (!context.resuming()) {
+		ExecutionState state = new ExecutionState();
+		Msg input;
+		if (context.resuming()) {
+			input = resumeMessage(agent, runtime, context);
+		}
+		else {
 			runtimePolicy.apply(context.agentId(), agent, runtime, context.hitl(), context.nl2sqlOnly());
+			input = new UserMessage(executionInput(context));
 		}
-		Msg input = context.resuming() ? resumeMessage(agent, runtime, context)
-				: new UserMessage(executionInput(context));
-		boolean emitConfirmationResult = !context.resuming() || !context.rejectedPlan();
-		Flux<ServerSentEvent<GraphNodeResponse>> events = streamAgent(agent, input, runtime, context, result, paused,
-				emitConfirmationResult);
-		if (context.resuming() && context.rejectedPlan()) {
-			events = events.concatWith(Flux.defer(() -> {
-				result.set("");
-				return streamAgent(agent, new UserMessage(revisionInput(context)), runtime, context, result, paused, true);
-			}));
-		}
-		return events.concatWith(Flux.defer(() -> {
-			if (!paused.get() && !context.nl2sqlOnly() && StringUtils.hasText(result.get())) {
-				repository.saveReport(context.conversationId(), context.agentId(), context.query(), result.get());
-			}
-			return Flux.just(completeEvent(context));
-		})).onErrorResume(ex -> errorFlux(context.agentIdText(), context.threadId(), ex));
+		Flux<ServerSentEvent<AgentEvent>> agentEvents = streamAgent(agent, input, runtime, context, state);
+		return Flux.concat(Flux.just(sse(context, runStartedEvent(context))), agentEvents,
+				Flux.defer(() -> completeExecution(context, state)));
 	}
 
-	private Flux<ServerSentEvent<GraphNodeResponse>> streamAgent(HarnessAgent agent, Msg input,
-			RuntimeContext runtime, RequestContext context, AtomicReference<String> result, AtomicBoolean paused,
-			boolean emitFinalAnswer) {
-		return agent.streamEvents(input, runtime)
-			.handle((event, sink) -> mapEvent(context, event, result, paused, emitFinalAnswer).ifPresent(sink::next));
+	private Flux<ServerSentEvent<AgentEvent>> streamAgent(HarnessAgent agent, Msg input, RuntimeContext runtime,
+			RequestContext context, ExecutionState state) {
+		return agent.streamEvents(input, runtime).doOnNext(state::observe).map(event -> sse(context, event));
 	}
 
-	private java.util.Optional<ServerSentEvent<GraphNodeResponse>> mapEvent(RequestContext context, AgentEvent event,
-			AtomicReference<String> finalResult, AtomicBoolean paused, boolean emitFinalAnswer) {
-		if (event instanceof TextBlockDeltaEvent delta && StringUtils.hasText(delta.getDelta())) {
-			String node = context.nl2sqlOnly() ? "SqlGenerateNode" : "ReportGeneratorNode";
-			TextType type = context.nl2sqlOnly() ? TextType.SQL : TextType.MARK_DOWN;
-			return java.util.Optional.of(ServerSentEvent.builder(GraphNodeResponse.output(context.agentIdText(),
-					context.threadId(), stepId(context, node), node, type, delta.getDelta())).build());
+	private Flux<ServerSentEvent<AgentEvent>> completeExecution(RequestContext context, ExecutionState state) {
+		if (!state.paused() && !context.nl2sqlOnly() && StringUtils.hasText(state.finalResult())) {
+			repository.saveReport(context.conversationId(), context.agentId(), context.query(), state.finalResult());
 		}
-		if (event instanceof ToolCallStartEvent toolCall) {
-			String node = toolNode(toolCall.getToolCallName());
-			String text = switch (toolCall.getToolCallName()) {
-				case "search_knowledge_base" -> "正在检索知识库…";
-				case "inspect_data_source" -> "正在检查数据源结构…";
-				case "search_products" -> "正在查询商品…";
-				case "place_order" -> context.hitl() ? "下单操作正在等待确认…" : "正在提交订单…";
-				default -> context.hitl() ? "已生成只读查询，正在检查执行权限…" : "正在执行只读查询…";
-			};
-			return java.util.Optional.of(ServerSentEvent.builder(GraphNodeResponse.output(context.agentIdText(),
-					context.threadId(), stepId(context, node), node, TextType.TEXT, text)).build());
-		}
-		if (event instanceof RequireUserConfirmEvent confirmation) {
-			paused.set(true);
-			return Optional.of(ServerSentEvent.builder(GraphNodeResponse.humanFeedbackRequired(
-					context.agentIdText(), context.threadId(), approvalText(confirmation.getToolCalls()))).build());
-		}
-		if (event instanceof AgentResultEvent agentResult) {
-			String text = agentResult.getResult() == null ? "" : agentResult.getResult().getTextContent();
-			if (emitFinalAnswer) {
-				finalResult.set(text == null ? "" : text);
-			}
-			if (emitFinalAnswer && StringUtils.hasText(text)) {
-				return java.util.Optional.of(ServerSentEvent.builder(
-						GraphNodeResponse.finalAnswer(context.agentIdText(), context.threadId(), text)).build());
-			}
-		}
-		return java.util.Optional.empty();
+		return Flux.just(sse(context,
+				new CustomEvent(STREAM_COMPLETED, Map.of("runId", context.runId(), "paused", state.paused()))));
+	}
+
+	private ServerSentEvent<AgentEvent> sse(RequestContext context, AgentEvent event) {
+		return ServerSentEvent.builder(event).id(context.runId()).build();
+	}
+
+	private CustomEvent runStartedEvent(RequestContext context) {
+		return new CustomEvent(RUN_STARTED, Map.of("agentId", context.agentIdText(), "conversationId",
+				context.conversationId(), "runId", context.runId()));
 	}
 
 	private RuntimeContext runtimeContext(RequestContext context) {
-		return RuntimeContext.builder()
-			.sessionId(context.conversationId())
-			.userId(context.agentIdText())
-			.build();
+		return RuntimeContext.builder().sessionId(context.conversationId()).userId(context.agentIdText()).build();
 	}
 
-	private RequestContext normalize(GraphRequest request) {
+	private RequestContext normalize(AgentStreamRequest request) {
 		if (request == null || !StringUtils.hasText(request.agentId()) || !StringUtils.hasText(request.query())) {
 			throw new IllegalArgumentException("agentId and query are required");
 		}
@@ -194,17 +170,25 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 		catch (NumberFormatException ex) {
 			throw new IllegalArgumentException("agentId must be numeric", ex);
 		}
-		boolean resuming = StringUtils.hasText(request.humanFeedbackContent());
-		if (resuming && !StringUtils.hasText(request.threadId())) {
-			throw new IllegalArgumentException("threadId is required when submitting human feedback");
+		if (agentId <= 0) {
+			throw new IllegalArgumentException("agentId must be positive");
+		}
+		boolean resuming = request.confirmation() != null;
+		if (resuming && !StringUtils.hasText(request.runId())) {
+			throw new IllegalArgumentException("runId is required when submitting a confirmation");
 		}
 		String conversationId = StringUtils.hasText(request.conversationId()) ? request.conversationId()
-				: StringUtils.hasText(request.threadId()) ? request.threadId() : UUID.randomUUID().toString();
-		String threadId = resuming ? request.threadId() : UUID.randomUUID().toString();
-		boolean hitl = request.humanFeedback() || resuming || repository.requiresHumanApproval(agentId);
-		ApprovalScope approvalScope = ApprovalScope.from(request.humanFeedbackContent());
-		return new RequestContext(request.agentId(), agentId, conversationId, threadId, request.query().trim(), hitl,
-				resuming, request.humanFeedbackContent(), request.rejectedPlan(), request.nl2sqlOnly(), approvalScope);
+				: StringUtils.hasText(request.runId()) ? request.runId() : UUID.randomUUID().toString();
+		repository.findConversationAgentId(conversationId)
+			.filter(ownerAgentId -> ownerAgentId != agentId)
+			.ifPresent(ownerAgentId -> {
+				throw new IllegalArgumentException("conversationId does not belong to agentId");
+			});
+		String runId = resuming ? request.runId() : UUID.randomUUID().toString();
+		boolean hitl = request.hitl() || resuming || repository.requiresHumanApproval(agentId);
+		ApprovalScope approvalScope = ApprovalScope.from(request.confirmation());
+		return new RequestContext(request.agentId(), agentId, conversationId, runId, request.query().trim(), hitl,
+				resuming, request.confirmation(), request.nl2sqlOnly(), approvalScope);
 	}
 
 	private String executionInput(RequestContext context) {
@@ -219,7 +203,7 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 		if (pendingTools.isEmpty()) {
 			throw new IllegalStateException("No pending AgentScope HITL operation was found for this conversation");
 		}
-		boolean approved = !context.rejectedPlan();
+		boolean approved = context.confirmation() != ConfirmationDecision.REJECT;
 		if (approved && context.approvalScope() != ApprovalScope.ONCE) {
 			applySessionApproval(agent, runtime, pendingTools, context.approvalScope());
 		}
@@ -251,7 +235,8 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 		PermissionContextState.Builder builder = PermissionContextState.builder()
 			.mode(approvalScope == ApprovalScope.ALL_FOR_SESSION ? PermissionMode.BYPASS : current.getMode());
 		current.getWorkingDirectories().forEach(builder::addWorkingDirectory);
-		current.getAllowRules().forEach((toolName, rules) -> rules.forEach(rule -> builder.addAllowRule(toolName, rule)));
+		current.getAllowRules()
+			.forEach((toolName, rules) -> rules.forEach(rule -> builder.addAllowRule(toolName, rule)));
 		current.getDenyRules().forEach((toolName, rules) -> rules.forEach(rule -> builder.addDenyRule(toolName, rule)));
 		if (approvalScope == ApprovalScope.TOOL_FOR_SESSION) {
 			List<String> approvedTools = pendingTools.stream().map(ToolUseBlock::getName).distinct().toList();
@@ -261,16 +246,14 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 				}
 			});
 			for (String toolName : approvedTools) {
-				builder.addAllowRule(toolName,
-						new PermissionRule(toolName, null, PermissionBehavior.ALLOW, "session"));
+				builder.addAllowRule(toolName, new PermissionRule(toolName, null, PermissionBehavior.ALLOW, "session"));
 			}
 		}
 		if (approvalScope == ApprovalScope.ALL_FOR_SESSION) {
-			builder.addAllowRule(SESSION_BYPASS_MARKER, new PermissionRule(SESSION_BYPASS_MARKER, null,
-					PermissionBehavior.ALLOW, "session"));
+			builder.addAllowRule(SESSION_BYPASS_MARKER,
+					new PermissionRule(SESSION_BYPASS_MARKER, null, PermissionBehavior.ALLOW, "session"));
 		}
-		agent.getDelegate()
-			.replacePermissionContext(runtime.getUserId(), runtime.getSessionId(), builder.build());
+		agent.getDelegate().replacePermissionContext(runtime.getUserId(), runtime.getSessionId(), builder.build());
 	}
 
 	private List<ToolUseBlock> pendingTools(HarnessAgent agent, RuntimeContext runtime) {
@@ -289,52 +272,14 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 		return List.of();
 	}
 
-	private String revisionInput(RequestContext context) {
-		String feedback = StringUtils.hasText(context.feedback()) ? context.feedback().trim()
-				: "请重新规划，不要执行刚才被拒绝的操作。";
-		return "用户拒绝了刚才的工具调用。请根据以下审核意见修订方案；不要重复原操作，必要时生成新的查询并再次申请确认：\n"
-				+ feedback;
-	}
-
-	private String approvalText(List<ToolUseBlock> tools) {
-		StringBuilder text = new StringBuilder("以下操作尚未执行，需要人工确认：");
-		for (ToolUseBlock tool : tools) {
-			text.append("\n\n工具：").append(tool.getName());
-			Object sql = tool.getInput().get("sql");
-			if (sql != null) {
-				text.append("\nSQL：\n").append(sql);
-			}
-			else {
-				text.append("\n参数：").append(tool.getInput());
-			}
-		}
-		text.append("\n\n请选择仅本次批准、会话内允许此类工具，或会话内默认允许。");
-		return text.toString();
-	}
-
-	private String toolNode(String toolName) {
-		return switch (toolName) {
-			case "search_knowledge_base" -> "EvidenceRecallNode";
-			case "inspect_data_source" -> "SchemaRecallNode";
-			default -> "SqlExecuteNode";
-		};
-	}
-
-	private String stepId(RequestContext context, String node) {
-		return context.threadId() + ":" + node + ":1";
-	}
-
-	private ServerSentEvent<GraphNodeResponse> completeEvent(RequestContext context) {
-		return ServerSentEvent.builder(GraphNodeResponse.complete(context.agentIdText(), context.threadId()))
-			.event("complete")
-			.build();
-	}
-
-	private Flux<ServerSentEvent<GraphNodeResponse>> errorFlux(String agentId, String threadId, Throwable error) {
-		String safeThreadId = StringUtils.hasText(threadId) ? threadId : UUID.randomUUID().toString();
-		String message = rootMessage(error);
-		return Flux.just(ServerSentEvent.builder(GraphNodeResponse.error(agentId, safeThreadId, message)).event("error")
-			.build());
+	private Flux<ServerSentEvent<AgentEvent>> errorFlux(String agentId, String runId, Throwable error) {
+		String safeRunId = StringUtils.hasText(runId) ? runId : UUID.randomUUID().toString();
+		Map<String, Object> value = new LinkedHashMap<>();
+		value.put("agentId", agentId == null ? "" : agentId);
+		value.put("runId", safeRunId);
+		value.put("message", rootMessage(error));
+		return Flux
+			.just(ServerSentEvent.<AgentEvent>builder(new CustomEvent(STREAM_ERROR, value)).id(safeRunId).build());
 	}
 
 	private String rootMessage(Throwable error) {
@@ -345,28 +290,29 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 		return StringUtils.hasText(current.getMessage()) ? current.getMessage() : current.getClass().getSimpleName();
 	}
 
-	private record RequestContext(String agentIdText, long agentId, String conversationId, String threadId,
-			String query, boolean hitl, boolean resuming, String feedback, boolean rejectedPlan, boolean nl2sqlOnly,
-			ApprovalScope approvalScope) {
-	}
+	private static final class ExecutionState {
 
-	private enum ApprovalScope {
+		private String finalResult = "";
 
-		ONCE,
+		private boolean paused;
 
-		TOOL_FOR_SESSION,
-
-		ALL_FOR_SESSION;
-
-		private static ApprovalScope from(String feedback) {
-			if (APPROVE_TOOL_FOR_SESSION.equals(feedback)) {
-				return TOOL_FOR_SESSION;
+		void observe(AgentEvent event) {
+			if (event instanceof RequireUserConfirmEvent) {
+				paused = true;
 			}
-			if (APPROVE_ALL_FOR_SESSION.equals(feedback)) {
-				return ALL_FOR_SESSION;
+			if (event instanceof AgentResultEvent resultEvent && resultEvent.getResult() != null) {
+				finalResult = resultEvent.getResult().getTextContent();
 			}
-			return ONCE;
 		}
+
+		String finalResult() {
+			return finalResult;
+		}
+
+		boolean paused() {
+			return paused;
+		}
+
 	}
 
 }

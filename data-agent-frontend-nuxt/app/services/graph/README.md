@@ -1,59 +1,12 @@
 # 逻辑模块: graph
 
 ## 模块描述
-图搜索服务，处理与后端的流式 (SSE) 交互，实现搜索过程的实时反馈
 
-## 类 (Classes)
-### Class: `GraphService`
-图搜索业务逻辑处理类
-#### 公开方法:
-- `streamSearch`: 发起流式搜索请求 (SSE)
+通过 SSE 消费 AgentScope 原生 `AgentEvent`。请求使用 `runId` 恢复暂停的 HITL 运行，
+`confirmation` 只表达批准范围或拒绝，不携带拒绝意见。
 
-## 类型定义 (Interfaces)
-### `GraphRequest`
-**描述**: 图搜索服务，处理与后端的流式 (SSE) 交互，实现搜索过程的实时反馈
-```typescript
-export interface GraphRequest {
-  /** 智能体 ID */
-  agentId: string;
-  /** 聊天记忆会话 ID */
-  conversationId: string;
-  /** Graph 运行 ID，仅在人工反馈恢复时复用 */
-  threadId?: string;
-  /** 用户查询语句 */
-  query: string;
-  /** 是否需要人工反馈 */
-  humanFeedback: boolean;
-  /** 人工反馈内容 */
-  humanFeedbackContent?: string;
-  /** 是否拒绝了之前的计划 */
-  rejectedPlan: boolean;
-  /** 是否仅执行 NL2SQL */
-  nl2sqlOnly: boolean;
-}
-```
+前端直接处理 `TEXT_BLOCK_DELTA`、`TOOL_CALL_START`、`TOOL_RESULT_END`、
+`REQUIRE_USER_CONFIRM` 和 `AGENT_RESULT`。未知 AgentScope 事件会被忽略。
 
-### `GraphNodeResponse`
-**描述**: 图节点响应数据接口
-```typescript
-export interface GraphNodeResponse {
-  /** 智能体 ID */
-  agentId: string;
-  /** 线程 ID */
-  threadId: string;
-  /** 当前执行的节点名称 */
-  nodeName: string;
-  /** 文本内容类型 */
-  textType: TextType;
-  /** 文本内容 */
-  text: string;
-  /** 是否发生错误 */
-  error: boolean;
-  /** 是否已完成 */
-  complete: boolean;
-}
-```
-
-
----
-> 🤖 AI 提示: 逻辑实现请参考 `graph/index.ts`。
+服务端生命周期通过 `CUSTOM` 事件传递：`run_started`、`stream_completed`、
+`stream_error`。本模块不再定义或解析节点名、step、textType 或时间线块。

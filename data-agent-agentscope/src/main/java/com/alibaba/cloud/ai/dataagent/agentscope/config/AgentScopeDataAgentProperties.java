@@ -29,6 +29,8 @@ public class AgentScopeDataAgentProperties {
 
 	private Path stateDirectory = Path.of(".agentscope", "state");
 
+	private Path skillsDirectory = Path.of("data-agent-agentscope", "skills");
+
 	private int compactionTriggerMessages = 30;
 
 	private int compactionKeepMessages = 10;
@@ -47,6 +49,14 @@ public class AgentScopeDataAgentProperties {
 
 	public void setStateDirectory(Path stateDirectory) {
 		this.stateDirectory = stateDirectory;
+	}
+
+	public Path getSkillsDirectory() {
+		return skillsDirectory;
+	}
+
+	public void setSkillsDirectory(Path skillsDirectory) {
+		this.skillsDirectory = skillsDirectory;
 	}
 
 	public int getCompactionTriggerMessages() {
@@ -140,13 +150,27 @@ public class AgentScopeDataAgentProperties {
 	}
 
 	public static class Mcp {
+
 		private String url = "http://127.0.0.1:8068/mcp";
+
 		private Duration timeout = Duration.ofSeconds(60);
 
-		public String getUrl() { return url; }
-		public void setUrl(String url) { this.url = url; }
-		public Duration getTimeout() { return timeout; }
-		public void setTimeout(Duration timeout) { this.timeout = timeout; }
+		public String getUrl() {
+			return url;
+		}
+
+		public void setUrl(String url) {
+			this.url = url;
+		}
+
+		public Duration getTimeout() {
+			return timeout;
+		}
+
+		public void setTimeout(Duration timeout) {
+			this.timeout = timeout;
+		}
+
 	}
 
 }

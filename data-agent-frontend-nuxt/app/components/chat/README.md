@@ -11,5 +11,3 @@
 - ChatSidebar.vue
 - ChatStreamingReport.vue
 - ChatWelcome.vue
-- ChatWorkflowTimeline.vue
-

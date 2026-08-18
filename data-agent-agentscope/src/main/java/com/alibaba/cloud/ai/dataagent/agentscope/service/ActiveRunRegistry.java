@@ -27,37 +27,34 @@ class ActiveRunRegistry {
 
 	private final Map<String, RunHandle> runs = new ConcurrentHashMap<>();
 
-	Mono<Void> register(String threadId, String conversationId) {
+	Mono<Void> register(String runId, String conversationId) {
 		RunHandle handle = new RunHandle(conversationId, Sinks.one());
-		RunHandle previous = runs.put(threadId, handle);
+		RunHandle previous = runs.put(runId, handle);
 		if (previous != null) {
-			previous.cancel.tryEmitEmpty();
+			previous.cancel().tryEmitEmpty();
 		}
-		return handle.cancel.asMono();
+		return handle.cancel().asMono();
 	}
 
-	void remove(String threadId) {
-		runs.remove(threadId);
+	void remove(String runId) {
+		runs.remove(runId);
 	}
 
-	void stop(String conversationId, String threadId) {
-		if (threadId != null) {
-			RunHandle handle = runs.remove(threadId);
+	void stop(String conversationId, String runId) {
+		if (runId != null) {
+			RunHandle handle = runs.remove(runId);
 			if (handle != null) {
-				handle.cancel.tryEmitEmpty();
+				handle.cancel().tryEmitEmpty();
 			}
 			return;
 		}
 		runs.entrySet().removeIf(entry -> {
-			if (!entry.getValue().conversationId.equals(conversationId)) {
+			if (!entry.getValue().conversationId().equals(conversationId)) {
 				return false;
 			}
-			entry.getValue().cancel.tryEmitEmpty();
+			entry.getValue().cancel().tryEmitEmpty();
 			return true;
 		});
-	}
-
-	private record RunHandle(String conversationId, Sinks.One<Void> cancel) {
 	}
 
 }

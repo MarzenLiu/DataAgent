@@ -13,17 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.agentscope.service;
+package com.alibaba.cloud.ai.dataagent.agentscope.agent;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
-import io.agentscope.core.event.AgentEvent;
-import org.springframework.http.codec.ServerSentEvent;
-import reactor.core.publisher.Flux;
-
-public interface AgentScopeSearchService {
-
-	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
-
-	void stop(String conversationId, String runId);
-
+/** Cache key for one constructed AgentScope agent; not persisted to a database table. */
+record AgentKey(long agentId) {
 }

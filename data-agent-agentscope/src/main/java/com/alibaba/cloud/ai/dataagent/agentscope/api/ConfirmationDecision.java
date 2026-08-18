@@ -13,17 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.agentscope.service;
+package com.alibaba.cloud.ai.dataagent.agentscope.api;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
-import io.agentscope.core.event.AgentEvent;
-import org.springframework.http.codec.ServerSentEvent;
-import reactor.core.publisher.Flux;
+public enum ConfirmationDecision {
 
-public interface AgentScopeSearchService {
+	APPROVE_ONCE,
 
-	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
+	APPROVE_TOOL_FOR_SESSION,
 
-	void stop(String conversationId, String runId);
+	APPROVE_ALL_FOR_SESSION,
+
+	REJECT
 
 }

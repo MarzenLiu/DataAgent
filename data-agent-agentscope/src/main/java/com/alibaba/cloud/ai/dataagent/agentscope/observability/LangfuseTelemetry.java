@@ -68,9 +68,8 @@ public class LangfuseTelemetry implements AutoCloseable {
 			.setTimeout(Duration.ofSeconds(10))
 			.build();
 		Resource resource = Resource.getDefault()
-			.merge(Resource.create(Attributes.of(AttributeKey.stringKey("service.name"),
-					properties.getServiceName(), AttributeKey.stringKey("deployment.environment.name"),
-					properties.getEnvironment())));
+			.merge(Resource.create(Attributes.of(AttributeKey.stringKey("service.name"), properties.getServiceName(),
+					AttributeKey.stringKey("deployment.environment.name"), properties.getEnvironment())));
 		this.tracerProvider = SdkTracerProvider.builder()
 			.addSpanProcessor(new LangfuseBaggageSpanProcessor())
 			.addSpanProcessor(BatchSpanProcessor.builder(new AgentScopeSpanExporter(exporter))
@@ -89,7 +88,8 @@ public class LangfuseTelemetry implements AutoCloseable {
 		}
 		this.openTelemetry = sdk;
 		this.agentScopeTracingMiddleware = new OtelTracingMiddleware();
-		LOGGER.info("AgentScope OpenTelemetry initialized with Langfuse endpoint {}", traceEndpoint(properties.getHost()));
+		LOGGER.info("AgentScope OpenTelemetry initialized with Langfuse endpoint {}",
+				traceEndpoint(properties.getHost()));
 	}
 
 	public boolean isEnabled() {
@@ -126,8 +126,9 @@ public class LangfuseTelemetry implements AutoCloseable {
 	}
 
 	private void validate(LangfuseProperties properties) {
-		if (!StringUtils.hasText(properties.getHost()) || !StringUtils.hasText(properties.getPublicKey())
-				|| !StringUtils.hasText(properties.getSecretKey())) {
+		boolean missingCredentials = !StringUtils.hasText(properties.getHost())
+				|| !StringUtils.hasText(properties.getPublicKey()) || !StringUtils.hasText(properties.getSecretKey());
+		if (missingCredentials) {
 			throw new IllegalStateException(
 					"LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are required when Langfuse is enabled");
 		}

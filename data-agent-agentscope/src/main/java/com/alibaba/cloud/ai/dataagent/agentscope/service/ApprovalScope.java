@@ -15,15 +15,25 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.service;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
-import io.agentscope.core.event.AgentEvent;
-import org.springframework.http.codec.ServerSentEvent;
-import reactor.core.publisher.Flux;
+import com.alibaba.cloud.ai.dataagent.agentscope.api.ConfirmationDecision;
 
-public interface AgentScopeSearchService {
+/** Scope applied to an approved AgentScope tool call for the current session. */
+enum ApprovalScope {
 
-	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
+	ONCE,
 
-	void stop(String conversationId, String runId);
+	TOOL_FOR_SESSION,
+
+	ALL_FOR_SESSION;
+
+	static ApprovalScope from(ConfirmationDecision decision) {
+		if (decision == ConfirmationDecision.APPROVE_TOOL_FOR_SESSION) {
+			return TOOL_FOR_SESSION;
+		}
+		if (decision == ConfirmationDecision.APPROVE_ALL_FOR_SESSION) {
+			return ALL_FOR_SESSION;
+		}
+		return ONCE;
+	}
 
 }

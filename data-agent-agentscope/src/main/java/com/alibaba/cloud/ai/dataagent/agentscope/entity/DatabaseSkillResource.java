@@ -13,17 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.agentscope.service;
+package com.alibaba.cloud.ai.dataagent.agentscope.entity;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
-import io.agentscope.core.event.AgentEvent;
-import org.springframework.http.codec.ServerSentEvent;
-import reactor.core.publisher.Flux;
-
-public interface AgentScopeSearchService {
-
-	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
-
-	void stop(String conversationId, String runId);
-
+/**
+ * Text resource belonging to a database-backed Harness skill.
+ *
+ * <p>
+ * Database table: {@code harness_skill_resource}. Columns: {@code resource_path} and
+ * {@code content}. The owning {@code skill_id} is supplied as a query condition.
+ *
+ * @param resourcePath relative path inside the skill
+ * @param content UTF-8 text resource content
+ */
+public record DatabaseSkillResource(String resourcePath, String content) {
 }

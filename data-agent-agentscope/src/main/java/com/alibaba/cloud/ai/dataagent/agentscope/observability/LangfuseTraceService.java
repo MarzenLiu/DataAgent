@@ -15,11 +15,13 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.observability;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.GraphEventType;
-import com.alibaba.cloud.ai.dataagent.agentscope.api.GraphNodeResponse;
-import com.alibaba.cloud.ai.dataagent.agentscope.api.GraphRequest;
+import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.AgentResultEvent;
+import io.agentscope.core.event.CustomEvent;
+import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.opentelemetry.api.baggage.Baggage;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
@@ -49,8 +51,8 @@ public class LangfuseTraceService {
 		this.objectMapper = objectMapper;
 	}
 
-	public Flux<ServerSentEvent<GraphNodeResponse>> trace(GraphRequest request, String agentId, String conversationId,
-			String threadId, boolean hitl, Flux<ServerSentEvent<GraphNodeResponse>> source) {
+	public Flux<ServerSentEvent<AgentEvent>> trace(AgentStreamRequest request, String agentId, String conversationId,
+			String runId, boolean hitl, Flux<ServerSentEvent<AgentEvent>> source) {
 		if (!telemetry.isEnabled()) {
 			return source;
 		}
@@ -63,8 +65,8 @@ public class LangfuseTraceService {
 				.setAttribute(LangfuseBaggageSpanProcessor.SESSION_ID, conversationId)
 				.setAttribute(LangfuseBaggageSpanProcessor.TRACE_NAME, TRACE_NAME)
 				.setAttribute(LangfuseBaggageSpanProcessor.AGENT_ID, agentId)
-				.setAttribute(LangfuseBaggageSpanProcessor.THREAD_ID, threadId)
-				.setAttribute("langfuse.observation.input", requestJson(request, conversationId, threadId))
+				.setAttribute(LangfuseBaggageSpanProcessor.THREAD_ID, runId)
+				.setAttribute("langfuse.observation.input", requestJson(request, conversationId, runId))
 				.setAttribute("langfuse.observation.metadata.phase", hitl ? "hitl" : "execution")
 				.startSpan();
 			AtomicBoolean ended = new AtomicBoolean();
@@ -78,24 +80,26 @@ public class LangfuseTraceService {
 				.put(LangfuseBaggageSpanProcessor.SESSION_ID, conversationId)
 				.put(LangfuseBaggageSpanProcessor.TRACE_NAME, TRACE_NAME)
 				.put(LangfuseBaggageSpanProcessor.AGENT_ID, agentId)
-				.put(LangfuseBaggageSpanProcessor.THREAD_ID, threadId)
+				.put(LangfuseBaggageSpanProcessor.THREAD_ID, runId)
 				.build();
 			Context traceContext = baggage.storeInContext(span.storeInContext(parent));
-			Flux<ServerSentEvent<GraphNodeResponse>> observed = source.doOnNext(event -> {
-				GraphNodeResponse data = event.data();
+			Flux<ServerSentEvent<AgentEvent>> observed = source.doOnNext(event -> {
+				AgentEvent data = event.data();
 				if (data == null) {
 					return;
 				}
-				if (data.error()) {
-					failure.compareAndSet(null, new IllegalStateException(data.text()));
+				if (data instanceof CustomEvent customEvent && "stream_error".equals(customEvent.getName())) {
+					failure.compareAndSet(null,
+							new IllegalStateException(String.valueOf(customEvent.getValue().get("message"))));
 				}
-				if (data.eventType() == GraphEventType.FINAL_ANSWER) {
-					finalOutput.set(data.text());
+				if (data instanceof AgentResultEvent resultEvent && resultEvent.getResult() != null) {
+					finalOutput.set(resultEvent.getResult().getTextContent());
 				}
-				else if (data.text() != null && !data.text().isBlank()) {
-					streamedOutput.append(data.text());
+				else if (data instanceof TextBlockDeltaEvent deltaEvent && deltaEvent.getDelta() != null) {
+					streamedOutput.append(deltaEvent.getDelta());
 				}
-			}).doOnError(error -> failure.compareAndSet(null, error))
+			})
+				.doOnError(error -> failure.compareAndSet(null, error))
 				.doFinally(signal -> finish(span, ended, failure.get(), signal, finalOutput.get(), streamedOutput));
 			return ContextPropagationOperator.runWithContext(observed, traceContext);
 		});
@@ -121,15 +125,14 @@ public class LangfuseTraceService {
 		span.end();
 	}
 
-	private String requestJson(GraphRequest request, String conversationId, String threadId) {
+	private String requestJson(AgentStreamRequest request, String conversationId, String runId) {
 		Map<String, Object> input = new LinkedHashMap<>();
 		input.put("agentId", request.agentId());
 		input.put("conversationId", conversationId);
-		input.put("threadId", threadId);
+		input.put("runId", runId);
 		input.put("query", request.query());
-		input.put("humanFeedback", request.humanFeedback());
-		input.put("humanFeedbackContent", request.humanFeedbackContent());
-		input.put("rejectedPlan", request.rejectedPlan());
+		input.put("hitl", request.hitl());
+		input.put("confirmation", request.confirmation());
 		input.put("nl2sqlOnly", request.nl2sqlOnly());
 		return json(input);
 	}

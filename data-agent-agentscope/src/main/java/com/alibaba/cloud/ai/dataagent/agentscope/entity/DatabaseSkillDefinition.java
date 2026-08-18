@@ -13,8 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.agentscope.api;
+package com.alibaba.cloud.ai.dataagent.agentscope.entity;
 
-public record GraphRequest(String agentId, String conversationId, String threadId, String query,
-		boolean humanFeedback, String humanFeedbackContent, boolean rejectedPlan, boolean nl2sqlOnly) {
+/**
+ * Read-only Harness skill definition stored in the application database.
+ *
+ * <p>
+ * Database table: {@code harness_skill}. Columns: {@code id}, {@code skill_name},
+ * {@code description}, and {@code content}. Repository queries only expose rows where
+ * {@code is_enabled = 1}.
+ *
+ * @param id skill primary key
+ * @param skillName unique Harness skill name
+ * @param description short skill description
+ * @param content skill instruction body
+ */
+public record DatabaseSkillDefinition(long id, String skillName, String description, String content) {
 }

@@ -15,15 +15,10 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.service;
 
-import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
-import io.agentscope.core.event.AgentEvent;
-import org.springframework.http.codec.ServerSentEvent;
-import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
-public interface AgentScopeSearchService {
-
-	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
-
-	void stop(String conversationId, String runId);
-
+/**
+ * Active stream cancellation handle held only in memory; not mapped to a database table.
+ */
+record RunHandle(String conversationId, Sinks.One<Void> cancel) {
 }

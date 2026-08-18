@@ -5,11 +5,15 @@ AgentScope Java 2.0.1 and Spring Boot WebFlux. It does not depend on the existin
 Spring AI, or Spring AI Alibaba. Business-data tools are discovered and invoked through the
 separate `data-agent-mcp-server` process.
 
-## API compatibility
+## Streaming API
 
-- `GET /api/stream/search` keeps the existing eight query parameters and SSE response fields.
-- `POST /api/stream/stop` keeps the existing `conversationId` / optional `threadId` contract.
-- SSE terminal event names remain `complete` and `error`.
+- `GET /api/stream/search` accepts `agentId`, `conversationId`, optional `runId`, `query`, `hitl`,
+  optional `confirmation`, and `nl2sqlOnly`.
+- `POST /api/stream/stop` accepts `conversationId` and an optional `runId`.
+- SSE data is an AgentScope `AgentEvent` JSON object. The service does not synthesize graph node
+  names, steps, text types, or timeline blocks.
+- Application lifecycle signals use AgentScope `CustomEvent` with the names `run_started`,
+  `stream_completed`, and `stream_error`; the SSE `id` is the run id.
 - Human review pauses before a protected tool executes and resumes the same AgentScope tool call.
 - `nl2sqlOnly=true` generates SQL without executing it.
 
@@ -21,9 +25,8 @@ the AgentScope service. Configuration changes are fingerprinted and the cached a
 the next request. Only `agentId` is injected where configured and is not exposed to the model.
 
 There is one cached AgentScope agent per configured agent, independent of request modes. HITL and
-NL2SQL-only are applied to the existing conversation's permission context before each new run. The
-HITL rejection middleware is always installed but remains inert unless a tool is denied. Switching
-HITL therefore does not replace the agent or change the AgentScope session. `nl2sqlOnly` is not an
+NL2SQL-only are applied to the existing conversation's permission context before each new run.
+Switching HITL does not replace the agent or change the AgentScope session. `nl2sqlOnly` is not an
 MCP tool argument; tools with `available_in_nl2sql_only=0` are denied for that run.
 
 The seeded `商品购买智能体` (agent id `5`) configures `search_products` as `ALLOW` and
@@ -38,25 +41,27 @@ approval scopes below before the MCP transaction executes.
 
 ## HITL approval scopes
 
-The existing `humanFeedbackContent` query parameter carries the approval choice, so the request and
-response schemas remain unchanged:
+The optional `confirmation` parameter carries one of these decisions when resuming a paused run:
 
-- `HITL_APPROVE_ONCE`: approve only the pending tool call.
-- `HITL_APPROVE_TOOL_FOR_SESSION`: approve the pending call and allow that tool for the current
+- `APPROVE_ONCE`: approve only the pending tool call.
+- `APPROVE_TOOL_FOR_SESSION`: approve the pending call and allow that tool for the current
   `(agentId, conversationId)` session.
-- `HITL_APPROVE_ALL_FOR_SESSION`: approve the pending call and switch only the current session to
+- `APPROVE_ALL_FOR_SESSION`: approve the pending call and switch only the current session to
   AgentScope `BYPASS` mode. Deny rules and non-bypassable tool safety checks still apply.
-- Any content submitted with `rejectedPlan=true` rejects the call and becomes feedback for replanning.
+- `REJECT`: deny the pending tool call. AgentScope continues its normal reasoning loop in the same
+  invocation. Rejection comments are intentionally not part of this protocol; users can explain or
+  revise their request with the next normal conversation turn.
 
 Session permissions are stored in AgentScope `AgentState`; they survive subsequent requests and a
 service restart, but do not affect another conversation.
 
 ## Configuration and launch
 
-The service defaults to port `8066` so it can run next to the existing backend. It reads only
-orchestration-owned records (agent prompt, chat-model configuration, and generated reports) from
-the management database. Datasource credentials, schema metadata, SQL execution, embedding model
-configuration, knowledge records, and Milvus access belong to the MCP server.
+The service defaults to port `8066` so it can run next to the existing backend. It uses MyBatis to
+read and write only orchestration-owned records (agent prompt, chat-model configuration, Harness
+skills, and generated reports) in the management database. Datasource credentials, schema
+metadata, SQL execution, embedding model configuration, knowledge records, and Milvus access
+belong to the MCP server.
 
 ```bash
 export DATA_AGENT_DATASOURCE_URL='jdbc:mysql://127.0.0.1:3306/saa_data_agent?...'
@@ -73,6 +78,25 @@ environment variables.
 
 AgentScope session state is stored under `.agentscope/state` by default. Context compaction starts
 at 30 messages and preserves the latest 10; both values are configurable.
+
+## Harness skills
+
+Skills are composed from two read-only sources. Project-owned skills live under
+`data-agent-agentscope/skills` by default, while database skills live in `harness_skill` with their
+optional text resources in `harness_skill_resource`. Database skills override project skills with
+the same name. The `agent_skill` table remains the shared allowlist: only enabled skill names for
+the current `agentId` are exposed to that agent.
+
+Skills are frozen when a cached agent is built. Changes to `agent_skill` or a database skill's
+`update_time` alter the configuration fingerprint and rebuild the agent on its next request.
+Dynamic skill creation, workspace skills, skill self-management, shell access, and filesystem
+tools remain disabled.
+
+Override the skill root when launching from another working directory:
+
+```bash
+export AGENTSCOPE_SKILLS_DIRECTORY='/absolute/path/to/data-agent-agentscope/skills'
+```
 
 ## Langfuse tracing
 

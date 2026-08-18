@@ -88,8 +88,9 @@ class LangfuseObservabilityTest {
 			Model model = mock(Model.class);
 			ModelCallInput input = new ModelCallInput(List.of(new UserMessage("hello")), List.of(), null, model);
 			try (Scope ignored = span.makeCurrent()) {
-				middleware.onModelCall(agent, RuntimeContext.builder().build(), input,
-						ignoredInput -> Flux.<AgentEvent>just(new TextBlockDeltaEvent("reply", "block", "answer")))
+				middleware
+					.onModelCall(agent, RuntimeContext.builder().build(), input,
+							ignoredInput -> Flux.<AgentEvent>just(new TextBlockDeltaEvent("reply", "block", "answer")))
 					.blockLast();
 			}
 			span.end();
