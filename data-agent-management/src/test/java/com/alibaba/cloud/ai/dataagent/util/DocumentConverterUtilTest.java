@@ -22,7 +22,7 @@ import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.entity.BusinessKnowledge;
 import com.alibaba.cloud.ai.dataagent.enums.KnowledgeType;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.document.Document;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
 
 import java.util.List;
 

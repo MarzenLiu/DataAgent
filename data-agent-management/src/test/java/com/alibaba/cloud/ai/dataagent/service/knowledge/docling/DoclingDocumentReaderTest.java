@@ -32,8 +32,8 @@ import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
 import com.alibaba.cloud.ai.dataagent.properties.DoclingProperties;
 import com.alibaba.cloud.ai.dataagent.service.knowledge.TextSplitterFactory;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.transformer.splitter.TextSplitter;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
+import com.alibaba.cloud.ai.dataagent.splitter.TextSplitter;
 import org.springframework.core.io.ByteArrayResource;
 
 import static org.assertj.core.api.Assertions.assertThat;

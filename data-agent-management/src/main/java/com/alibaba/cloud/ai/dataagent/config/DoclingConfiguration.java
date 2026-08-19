@@ -28,7 +28,7 @@ import org.springframework.util.StringUtils;
 public class DoclingConfiguration {
 
 	@Bean
-	@ConditionalOnProperty(prefix = "spring.ai.alibaba.data-agent.docling", name = "enabled", havingValue = "true")
+	@ConditionalOnProperty(prefix = "data-agent.docling", name = "enabled", havingValue = "true")
 	public DoclingServeApi doclingServeApi(DoclingProperties properties) {
 		var builder = DoclingServeApi.builder()
 			.baseUrl(properties.getBaseUrl())

@@ -13,17 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.service.knowledge.docling;
+package com.alibaba.cloud.ai.dataagent.rag;
 
 import java.util.List;
 
-import ai.docling.core.DoclingDocument;
-import com.alibaba.cloud.ai.dataagent.rag.Document;
+/** Application-layer embedding boundary used by the AgentScope MCP knowledge tools. */
+public interface EmbeddingClient {
 
-public interface DoclingDocumentMapper {
+	double[] embed(String text);
 
-	boolean supports(String extension);
-
-	List<Document> map(DoclingDocument document, String sourceFilename);
+	default List<double[]> embedAll(List<String> texts) {
+		return texts.stream().map(this::embed).toList();
+	}
 
 }

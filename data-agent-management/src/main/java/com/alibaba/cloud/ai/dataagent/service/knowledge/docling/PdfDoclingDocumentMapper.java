@@ -32,7 +32,7 @@ import ai.docling.core.DoclingDocument.TableCell;
 import ai.docling.core.DoclingDocument.TableItem;
 import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
 import com.alibaba.cloud.ai.dataagent.properties.DoclingProperties;
-import org.springframework.ai.document.Document;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 

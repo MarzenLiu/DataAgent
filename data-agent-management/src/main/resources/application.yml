@@ -30,66 +30,48 @@ spring:
       continue-on-error: true
       separator: ;
       encoding: utf-8
-  ai:
-    chat:
-      memory:
-        repository:
-          jdbc:
-            initialize-schema: always
-    vectorstore:
-      # application-milvus.yml overrides this when the default milvus profile is active.
-      type: simple
-    alibaba:
-      data-agent:
-        vector-store:
-          table-topk-limit: 10
-          table-similarity-threshold: 0.2
-          default-topk-limit: 8
-          default-similarity-threshold: 0.4
-        code-executor:
-          # 运行Python代码的环境（生产环境建议使用docker，不建议使用local）
-          code-pool-executor: local
-          # Python执行的最大重试次数
-          python-max-tries-count: 5
-        file:
-          type: local
-          path-prefix: data-agent
-          # 当前目录下不要用点， ./uploads win下拼接完整格式路径会解析不了，比如 data-agent/./uploads win识别不了
-          path: uploads
-          url-prefix: /uploads
-          imageSize: 2097152
-          oss:
-            access-key-id: ${OSS_ACCESS_KEY_ID:}
-            access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
-            endpoint: ${OSS_ENDPOINT:}
-            bucket-name: ${OSS_BUCKET_NAME:}
-            custom-domain: ${OSS_CUSTOM_DOMAIN:}
-        docling:
-          enabled: ${DOCLING_ENABLED:true}
-          base-url: ${DOCLING_BASE_URL:http://localhost:5001}
-          api-key: ${DOCLING_API_KEY:}
-          connect-timeout: ${DOCLING_CONNECT_TIMEOUT:5s}
-          read-timeout: ${DOCLING_READ_TIMEOUT:10m}
-          async-poll-interval: ${DOCLING_POLL_INTERVAL:2s}
-          async-timeout: ${DOCLING_ASYNC_TIMEOUT:15m}
-          fallback-to-tika: ${DOCLING_FALLBACK_TO_TIKA:true}
-          pdf:
-            ocr-enabled: ${DOCLING_PDF_OCR_ENABLED:true}
-            max-table-rows-per-chunk: ${DOCLING_PDF_TABLE_ROWS:20}
-          excel:
-            max-table-rows-per-chunk: ${DOCLING_EXCEL_TABLE_ROWS:50}
-        max-sql-retry-count: 10
-        # Langfuse 可观测性配置
-        langfuse:
-          enabled: ${LANGFUSE_ENABLED:false}
-          host: ${LANGFUSE_HOST:}
-          public-key: ${LANGFUSE_PUBLIC_KEY:}
-          secret-key: ${LANGFUSE_SECRET_KEY:}
   webflux:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
       enabled: true
+
+data-agent:
+  agentscope:
+    base-url: ${AGENTSCOPE_BASE_URL:http://127.0.0.1:8066}
+  vector-store:
+    type: simple
+    file-path: ${VECTOR_STORE_PATH:./vectorstore/vectorstore.json}
+    table-topk-limit: 10
+    table-similarity-threshold: 0.2
+    default-topk-limit: 8
+    default-similarity-threshold: 0.4
+  file:
+    type: local
+    path-prefix: data-agent
+    path: uploads
+    url-prefix: /uploads
+    imageSize: 2097152
+    oss:
+      access-key-id: ${OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+      endpoint: ${OSS_ENDPOINT:}
+      bucket-name: ${OSS_BUCKET_NAME:}
+      custom-domain: ${OSS_CUSTOM_DOMAIN:}
+  docling:
+    enabled: ${DOCLING_ENABLED:true}
+    base-url: ${DOCLING_BASE_URL:http://localhost:5001}
+    api-key: ${DOCLING_API_KEY:}
+    connect-timeout: ${DOCLING_CONNECT_TIMEOUT:5s}
+    read-timeout: ${DOCLING_READ_TIMEOUT:10m}
+    async-poll-interval: ${DOCLING_POLL_INTERVAL:2s}
+    async-timeout: ${DOCLING_ASYNC_TIMEOUT:15m}
+    fallback-to-tika: ${DOCLING_FALLBACK_TO_TIKA:true}
+    pdf:
+      ocr-enabled: ${DOCLING_PDF_OCR_ENABLED:true}
+      max-table-rows-per-chunk: ${DOCLING_PDF_TABLE_ROWS:20}
+    excel:
+      max-table-rows-per-chunk: ${DOCLING_EXCEL_TABLE_ROWS:50}
 
 mybatis:
 

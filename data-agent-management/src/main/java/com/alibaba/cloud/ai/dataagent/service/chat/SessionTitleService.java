@@ -16,15 +16,12 @@
 package com.alibaba.cloud.ai.dataagent.service.chat;
 
 import com.alibaba.cloud.ai.dataagent.entity.ChatSession;
-import com.alibaba.cloud.ai.dataagent.service.llm.LlmService;
+import com.alibaba.cloud.ai.dataagent.service.aimodelconfig.AgentScopeModelClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import reactor.core.publisher.Flux;
-
-import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,7 +41,7 @@ public class SessionTitleService {
 
 	private final SessionEventPublisher sessionEventPublisher;
 
-	private final LlmService llmService;
+	private final AgentScopeModelClient agentScopeModelClient;
 
 	@Qualifier("dbOperationExecutor")
 	private final ExecutorService executorService;
@@ -99,16 +96,7 @@ public class SessionTitleService {
 
 	private String requestSummary(String userMessage) {
 		try {
-			String systemPrompt = """
-					你是一名对话助手，请根据用户的第一条输入生成不超过20个字的会话标题。
-					使用中文输出，避免使用标点或引号，仅保留核心主题。
-					""";
-			String userPrompt = "用户输入：" + userMessage;
-			Flux<String> responseFlux = llmService
-				.toStringFlux(llmService.callObserved("session-title.generate", systemPrompt, userPrompt));
-			return responseFlux.collect(StringBuilder::new, StringBuilder::append)
-				.map(StringBuilder::toString)
-				.block(Duration.ofSeconds(15));
+			return agentScopeModelClient.generateTitle(userMessage);
 		}
 		catch (Exception ex) {
 			log.warn("LLM title generation failed: {}", ex.getMessage());

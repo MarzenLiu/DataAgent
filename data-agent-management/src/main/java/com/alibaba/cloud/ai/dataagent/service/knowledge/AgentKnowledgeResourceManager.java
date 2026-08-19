@@ -24,9 +24,9 @@ import com.alibaba.cloud.ai.dataagent.service.file.FileStorageService;
 import com.alibaba.cloud.ai.dataagent.service.knowledge.docling.DoclingDocumentReader;
 import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.reader.tika.TikaDocumentReader;
-import org.springframework.ai.transformer.splitter.TextSplitter;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
+import com.alibaba.cloud.ai.dataagent.splitter.TextSplitter;
+import org.apache.tika.Tika;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
@@ -128,9 +128,14 @@ public class AgentKnowledgeResourceManager {
 			}
 		}
 
-		// 使用TikaDocumentReader读取文件
-		TikaDocumentReader tikaDocumentReader = new TikaDocumentReader(resource);
-		List<Document> documents = tikaDocumentReader.read();
+		List<Document> documents;
+		try (var inputStream = resource.getInputStream()) {
+			String content = new Tika().parseToString(inputStream);
+			documents = List.of(new Document(content));
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException("Failed to parse knowledge document", ex);
+		}
 
 		// 根据splitterType获取对应的分块器
 		TextSplitter splitter = textSplitterFactory.getSplitter(knowledge.getSplitterType());
@@ -160,8 +165,10 @@ public class AgentKnowledgeResourceManager {
 		}
 		catch (Exception e) {
 			// 检查是否是资源不存在的错误，如果是则视为删除成功（等幂操作）
-			if (e.getMessage() != null && (e.getMessage().contains("not found")
-					|| e.getMessage().contains("does not exist") || e.getMessage().contains("already deleted"))) {
+			String message = e.getMessage();
+			boolean missing = message != null && (message.contains("not found") || message.contains("does not exist")
+					|| message.contains("already deleted"));
+			if (missing) {
 				log.info("Vector data already deleted or not found for knowledgeId: {}, treating as success",
 						knowledgeId);
 				return true;

@@ -91,7 +91,7 @@ class PdfDoclingDocumentMapperTest {
 			.table(table)
 			.build();
 
-		List<org.springframework.ai.document.Document> chunks = mapper.map(document, "report.pdf");
+		List<com.alibaba.cloud.ai.dataagent.rag.Document> chunks = mapper.map(document, "report.pdf");
 
 		assertThat(chunks).hasSize(3);
 		assertThat(chunks.get(0).getText()).contains("标题路径: 财务分析", "本期收入增长");

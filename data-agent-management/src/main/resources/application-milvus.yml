@@ -1,19 +1,8 @@
-spring:
-  ai:
-    vectorstore:
-      type: milvus
-      milvus:
-        client:
-          host: ${MILVUS_HOST:127.0.0.1}
-          port: ${MILVUS_PORT:19530}
-        database-name: ${MILVUS_DATABASE:default}
-        collection-name: ${MILVUS_COLLECTION:vector_store}
-        embedding-dimension: ${MILVUS_DIMENSION:1024}
-        index-type: AUTOINDEX
-        metric-type: COSINE
-        index-parameters: '{}'
-        initialize-schema: true
-    alibaba:
-      data-agent:
-        vector-store:
-          embedding-dimension: ${MILVUS_DIMENSION:1024}
+data-agent:
+  vector-store:
+    type: milvus
+    milvus-uri: ${MILVUS_URI:http://127.0.0.1:19530}
+    milvus-token: ${MILVUS_TOKEN:}
+    milvus-database: ${MILVUS_DATABASE:default}
+    milvus-collection: ${MILVUS_COLLECTION:vector_store}
+    embedding-dimension: ${MILVUS_DIMENSION:1024}

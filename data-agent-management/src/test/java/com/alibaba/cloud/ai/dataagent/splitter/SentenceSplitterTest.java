@@ -16,7 +16,7 @@
 package com.alibaba.cloud.ai.dataagent.splitter;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.document.Document;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
 
 import java.util.Collections;
 import java.util.List;

@@ -1,11 +1,11 @@
 /*
- * Copyright 2024-2025 the original author or authors.
+ * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      https://www.apache.org/licenses/LICENSE-2.0
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,12 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.alibaba.cloud.ai.dataagent.splitter;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.transformer.splitter.TextSplitter;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
@@ -84,14 +82,15 @@ public class SentenceSplitter extends TextSplitter {
 	}
 
 	@Override
-	protected List<String> splitText(String text) {
+	public List<String> splitText(String text) {
 		return extractSentences(text);
 	}
 
 	@Override
 	public List<Document> apply(List<Document> documents) {
-		if (CollectionUtils.isEmpty(documents))
+		if (CollectionUtils.isEmpty(documents)) {
 			return new ArrayList<>();
+		}
 		List<Document> result = new ArrayList<>();
 		for (Document doc : documents) {
 			if (StringUtils.hasText(doc.getText())) {
@@ -104,8 +103,9 @@ public class SentenceSplitter extends TextSplitter {
 
 	private List<Document> splitDocument(Document document) {
 		List<String> sentences = extractSentences(document.getText());
-		if (sentences.isEmpty())
+		if (sentences.isEmpty()) {
 			return List.of(document);
+		}
 
 		List<Document> result = new ArrayList<>();
 		List<String> currentChunk = new ArrayList<>();
@@ -273,8 +273,9 @@ public class SentenceSplitter extends TextSplitter {
 
 	// 判断是否包含汉字 (用于拼接空格判断)
 	private boolean isChinese(String str) {
-		if (str == null || str.isEmpty())
+		if (str == null || str.isEmpty()) {
 			return false;
+		}
 		// 简单判断首字符是否为汉字即可满足大部分拼接场景
 		int codePoint = str.codePointAt(0);
 		return Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN;

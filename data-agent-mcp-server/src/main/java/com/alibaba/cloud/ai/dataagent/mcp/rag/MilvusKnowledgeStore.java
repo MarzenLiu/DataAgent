@@ -29,7 +29,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-/** Reads the Spring AI ingestion collection schema without depending on Spring AI. */
+/** Reads the framework-neutral ingestion collection schema shared by management. */
 @Component
 @ConditionalOnExpression("'${data-agent.mcp.rag.enabled:true}' == 'true' && '${data-agent.mcp.rag.store-type:milvus}' == 'milvus'")
 public class MilvusKnowledgeStore implements KnowledgeVectorStore {
@@ -48,14 +48,18 @@ public class MilvusKnowledgeStore implements KnowledgeVectorStore {
 		this.properties = properties.getRag();
 		this.objectMapper = objectMapper;
 		ConnectConfig.ConnectConfigBuilder builder = ConnectConfig.builder().uri(this.properties.getMilvusUri()).connectTimeoutMs(30_000L);
-		if (StringUtils.hasText(this.properties.getMilvusToken())) builder.token(this.properties.getMilvusToken());
+		if (StringUtils.hasText(this.properties.getMilvusToken())) {
+			builder.token(this.properties.getMilvusToken());
+		}
 		this.client = new MilvusClientV2(builder.build());
 		ensureCollection();
 	}
 
 	@Override
 	public List<Match> search(long agentId, Set<Integer> recalledKnowledgeIds, double[] queryVector) {
-		if (recalledKnowledgeIds.isEmpty() || queryVector.length == 0) return List.of();
+		if (recalledKnowledgeIds.isEmpty() || queryVector.length == 0) {
+			return List.of();
+		}
 		if (queryVector.length != properties.getEmbeddingDimension()) {
 			throw new IllegalStateException("Embedding dimension mismatch: expected %d, got %d"
 					.formatted(properties.getEmbeddingDimension(), queryVector.length));
@@ -70,12 +74,15 @@ public class MilvusKnowledgeStore implements KnowledgeVectorStore {
 				.outputFields(List.of(ID_FIELD, CONTENT_FIELD, METADATA_FIELD)).limit(Math.max(1, properties.getTopK()))
 				.consistencyLevel(ConsistencyLevel.STRONG).build());
 		List<Match> matches = new ArrayList<>();
-		if (response.getSearchResults() == null || response.getSearchResults().isEmpty()) return List.of();
+		if (response.getSearchResults() == null || response.getSearchResults().isEmpty()) {
+			return List.of();
+		}
 		for (SearchResp.SearchResult result : response.getSearchResults().get(0)) {
 			Map<String, Object> metadata = metadata(result.getEntity().get(METADATA_FIELD));
 			Integer knowledgeId = integer(metadata.get("agentKnowledgeId"));
-			if (knowledgeId != null && recalledKnowledgeIds.contains(knowledgeId)
-					&& result.getScore() >= properties.getSimilarityThreshold()) {
+			boolean accepted = knowledgeId != null && recalledKnowledgeIds.contains(knowledgeId)
+					&& result.getScore() >= properties.getSimilarityThreshold();
+			if (accepted) {
 				matches.add(new Match(knowledgeId, String.valueOf(result.getEntity().get(CONTENT_FIELD)), metadata, result.getScore()));
 			}
 		}
@@ -85,7 +92,9 @@ public class MilvusKnowledgeStore implements KnowledgeVectorStore {
 	private void ensureCollection() {
 		boolean exists = client.hasCollection(HasCollectionReq.builder().databaseName(properties.getMilvusDatabase())
 				.collectionName(properties.getMilvusCollection()).build());
-		if (exists) return;
+		if (exists) {
+			return;
+		}
 		CreateCollectionReq.CollectionSchema schema = MilvusClientV2.CreateSchema();
 		schema.setEnableDynamicField(false);
 		schema.addField(AddFieldReq.builder().fieldName(ID_FIELD).dataType(DataType.VarChar).maxLength(36).isPrimaryKey(true).autoID(false).build());
@@ -101,19 +110,33 @@ public class MilvusKnowledgeStore implements KnowledgeVectorStore {
 		log.info("Created Milvus collection {}", properties.getMilvusCollection());
 	}
 	private Map<String, Object> metadata(Object raw) {
-		if (raw == null) return Map.of();
-		try { return objectMapper.readValue(raw instanceof String string ? string : GSON.toJson(raw), MAP_TYPE); }
-		catch (IOException ex) { throw new IllegalStateException("Failed to decode Milvus document metadata", ex); }
+		if (raw == null) {
+			return Map.of();
+		}
+		try {
+			return objectMapper.readValue(raw instanceof String string ? string : GSON.toJson(raw), MAP_TYPE);
+		}
+		catch (IOException ex) {
+			throw new IllegalStateException("Failed to decode Milvus document metadata", ex);
+		}
 	}
 	private float[] toFloat(double[] values) {
 		float[] result = new float[values.length];
-		for (int i = 0; i < values.length; i++) result[i] = (float) values[i];
+		for (int i = 0; i < values.length; i++) {
+			result[i] = (float) values[i];
+		}
 		return result;
 	}
 	private Integer integer(Object value) {
-		if (value instanceof Number number) return number.intValue();
-		try { return value == null ? null : Integer.valueOf(value.toString()); }
-		catch (NumberFormatException ignored) { return null; }
+		if (value instanceof Number number) {
+			return number.intValue();
+		}
+		try {
+			return value == null ? null : Integer.valueOf(value.toString());
+		}
+		catch (NumberFormatException ignored) {
+			return null;
+		}
 	}
 	@PreDestroy void close() { client.close(); }
 }

@@ -27,7 +27,7 @@
 								</v-avatar>
 								<div>
 									<div class="text-subtitle-2 font-weight-bold text-white">
-										Spring AI Alibaba
+										AgentScope Java
 									</div>
 									<div
 										class="text-caption text-blue-lighten-3 font-weight-bold brand-subtitle"

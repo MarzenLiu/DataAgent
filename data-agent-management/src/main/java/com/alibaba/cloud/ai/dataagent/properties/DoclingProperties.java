@@ -23,7 +23,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Getter
 @Setter
-@ConfigurationProperties(prefix = "spring.ai.alibaba.data-agent.docling")
+@ConfigurationProperties(prefix = "data-agent.docling")
 public class DoclingProperties {
 
 	private boolean enabled;

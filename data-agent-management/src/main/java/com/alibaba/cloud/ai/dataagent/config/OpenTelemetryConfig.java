@@ -31,7 +31,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.concurrent.TimeUnit;
@@ -64,12 +67,17 @@ public class OpenTelemetryConfig {
 		if (!enabled) {
 			return OpenTelemetry.noop();
 		}
+		if (!hasValidLangfuseConfiguration()) {
+			log.warn("Langfuse telemetry is enabled but its endpoint or credentials are incomplete; using no-op telemetry");
+			return OpenTelemetry.noop();
+		}
 
 		String auth = publicKey + ":" + secretKey;
 		String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+		String normalizedHost = host.trim().replaceFirst("/+$", "");
 
 		OtlpHttpSpanExporter spanExporter = OtlpHttpSpanExporter.builder()
-			.setEndpoint(host + "/api/public/otel/v1/traces")
+			.setEndpoint(normalizedHost + "/api/public/otel/v1/traces")
 			.addHeader("Authorization", "Basic " + encodedAuth)
 			.setTimeout(10, TimeUnit.SECONDS)
 			.build();
@@ -90,6 +98,20 @@ public class OpenTelemetryConfig {
 		log.info("OpenTelemetry initialized with Langfuse OTLP HTTP exporter");
 
 		return openTelemetrySdk;
+	}
+
+	private boolean hasValidLangfuseConfiguration() {
+		if (!StringUtils.hasText(host) || !StringUtils.hasText(publicKey) || !StringUtils.hasText(secretKey)) {
+			return false;
+		}
+		try {
+			URI endpoint = new URI(host.trim());
+			return ("http".equalsIgnoreCase(endpoint.getScheme()) || "https".equalsIgnoreCase(endpoint.getScheme()))
+					&& StringUtils.hasText(endpoint.getHost());
+		}
+		catch (URISyntaxException ex) {
+			return false;
+		}
 	}
 
 	@Bean

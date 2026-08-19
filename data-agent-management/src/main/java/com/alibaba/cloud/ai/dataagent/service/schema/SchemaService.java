@@ -15,26 +15,11 @@
  */
 package com.alibaba.cloud.ai.dataagent.service.schema;
 
-import com.alibaba.cloud.ai.dataagent.bo.DbConfigBO;
 import com.alibaba.cloud.ai.dataagent.dto.datasource.SchemaInitRequest;
-import com.alibaba.cloud.ai.dataagent.dto.schema.SchemaDTO;
-import org.springframework.ai.document.Document;
 
-import java.util.List;
-
+/** Ingests datasource schema metadata for retrieval by AgentScope MCP tools. */
 public interface SchemaService {
 
 	Boolean schema(Integer datasourceId, SchemaInitRequest schemaInitRequest) throws Exception;
-
-	List<Document> getTableDocumentsByDatasource(Integer datasourceId, String query);
-
-	void extractDatabaseName(SchemaDTO schemaDTO, DbConfigBO dbConfig);
-
-	void buildSchemaFromDocuments(String agentId, List<Document> columnDocumentList, List<Document> tableDocuments,
-			SchemaDTO schemaDTO);
-
-	List<Document> getTableDocuments(Integer datasourceId, List<String> tableNames);
-
-	List<Document> getColumnDocumentsByTableName(Integer datasourceId, List<String> tableNames);
 
 }

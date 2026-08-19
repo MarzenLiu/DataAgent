@@ -85,8 +85,8 @@ public class AgentStartupInitialization implements ApplicationRunner, Disposable
 	 * Recover events lost after transaction commit and jobs left in PROCESSING by a
 	 * process crash. The age guard prevents competing with healthy in-flight work.
 	 */
-	@Scheduled(initialDelayString = "${spring.ai.alibaba.data-agent.embedding-recovery.initial-delay-ms:300000}",
-			fixedDelayString = "${spring.ai.alibaba.data-agent.embedding-recovery.fixed-delay-ms:300000}")
+	@Scheduled(initialDelayString = "${data-agent.embedding-recovery.initial-delay-ms:300000}",
+			fixedDelayString = "${data-agent.embedding-recovery.fixed-delay-ms:300000}")
 	public void recoverPendingEmbeddings() {
 		if (!hasActiveEmbeddingModel()) {
 			log.warn("No active EMBEDDING model configured; pending knowledge will remain pending");

@@ -19,7 +19,7 @@ import com.alibaba.cloud.ai.dataagent.enums.SplitterType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.transformer.splitter.TextSplitter;
+import com.alibaba.cloud.ai.dataagent.splitter.TextSplitter;
 
 import java.util.HashMap;
 import java.util.Map;

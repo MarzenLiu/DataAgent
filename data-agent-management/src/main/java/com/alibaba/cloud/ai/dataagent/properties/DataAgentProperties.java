@@ -26,10 +26,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class DataAgentProperties {
 
 	/**
-	 * spring.ai.alibaba.data-agent.embedding-batch.encoding-type=cl100k_base
-	 * spring.ai.alibaba.data-agent.embedding-batch.max-token-count=2000
-	 * spring.ai.alibaba.data-agent.embedding-batch.reserve-percentage=0.2
-	 * spring.ai.alibaba.data-agent.embedding-batch.max-text-count=10
+	 * data-agent.embedding-batch.encoding-type=cl100k_base
 	 */
 	private EmbeddingBatch embeddingBatch = new EmbeddingBatch();
 
@@ -73,7 +70,7 @@ public class DataAgentProperties {
 	private boolean enableSqlResultChart = true;
 
 	/**
-	 * 执行SQL结果图表化超时时间，默认15000ms。结构化输出可能触发 Spring AI 自动修复重试，过短的超时会取消仍在运行的模型请求。
+	 * 执行SQL结果图表化超时时间，默认15000ms。
 	 */
 	private Long enrichSqlResultTimeout = 15000L;
 
@@ -255,6 +252,17 @@ public class DataAgentProperties {
 	@Setter
 	public static class VectorStoreProperties {
 
+		/** Storage shared with the standalone MCP retrieval service: milvus or simple. */
+		private String type = "milvus";
+
+		private String milvusUri = "http://127.0.0.1:19530";
+
+		private String milvusDatabase = "default";
+
+		private String milvusCollection = "vector_store";
+
+		private String milvusToken;
+
 		// 专门给召回Table 用的配置
 		private int tableTopkLimit = 10;
 
@@ -282,7 +290,7 @@ public class DataAgentProperties {
 		 * value of 0 disables the check, which is useful for the development-only simple
 		 * store.
 		 */
-		private int embeddingDimension = 0;
+		private int embeddingDimension = 1024;
 
 		/**
 		 * 是否启用混合搜索

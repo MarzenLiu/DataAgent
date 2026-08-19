@@ -203,7 +203,7 @@ public class AgentScopeAgentFactory {
 		return result;
 	}
 
-	private Model createModel(ModelSettings settings) {
+	public Model createModel(ModelSettings settings) {
 		if (!StringUtils.hasText(settings.apiKey())) {
 			throw new IllegalStateException(
 					"No active chat model API key is configured in model_config or agentscope.data-agent.model.api-key");
@@ -237,6 +237,14 @@ public class AgentScopeAgentFactory {
 			builder.endpointPath(settings.endpointPath());
 		}
 		return builder.build();
+	}
+
+	public Model createActiveModel() {
+		return createModel(repository.findActiveChatModel().orElseGet(this::fallbackModelSettings));
+	}
+
+	public void deleteSessionState(long agentId, String sessionId) {
+		stateStore.delete("data-agent-%d".formatted(agentId), sessionId);
 	}
 
 	private ModelSettings fallbackModelSettings() {

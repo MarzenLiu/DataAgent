@@ -28,7 +28,7 @@ import ai.docling.core.DoclingDocument.TableItem;
 import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
 import com.alibaba.cloud.ai.dataagent.properties.DoclingProperties;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.document.Document;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

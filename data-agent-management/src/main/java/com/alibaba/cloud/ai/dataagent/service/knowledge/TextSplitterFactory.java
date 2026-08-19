@@ -18,7 +18,7 @@ package com.alibaba.cloud.ai.dataagent.service.knowledge;
 import com.alibaba.cloud.ai.dataagent.enums.SplitterType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.transformer.splitter.TextSplitter;
+import com.alibaba.cloud.ai.dataagent.splitter.TextSplitter;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;

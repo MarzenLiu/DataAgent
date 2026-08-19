@@ -28,7 +28,7 @@ import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreServic
 import com.alibaba.cloud.ai.dataagent.vo.BusinessKnowledgeVO;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.document.Document;
+import com.alibaba.cloud.ai.dataagent.rag.Document;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -124,8 +124,9 @@ public class BusinessKnowledgeServiceImpl implements BusinessKnowledgeService {
 		// 更新属性
 		knowledge.setBusinessTerm(knowledgeDTO.getBusinessTerm());
 		knowledge.setDescription(knowledgeDTO.getDescription());
-		if (StringUtils.hasText(knowledgeDTO.getSynonyms()))
+		if (StringUtils.hasText(knowledgeDTO.getSynonyms())) {
 			knowledge.setSynonyms(knowledgeDTO.getSynonyms());
+		}
 
 		// 设置初始状态为处理中
 		knowledge.setEmbeddingStatus(EmbeddingStatus.PROCESSING);
