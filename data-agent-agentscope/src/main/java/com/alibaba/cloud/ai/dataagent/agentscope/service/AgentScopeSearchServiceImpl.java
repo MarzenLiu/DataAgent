@@ -16,6 +16,7 @@
 package com.alibaba.cloud.ai.dataagent.agentscope.service;
 
 import static com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentRuntimePolicy.SESSION_BYPASS_MARKER;
+import static com.alibaba.cloud.ai.dataagent.agentscope.constant.DataAgentRuntimeConstants.GLOBAL_USER_ID;
 
 import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentRuntimePolicy;
 import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentScopeAgentFactory;
@@ -156,7 +157,7 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 	}
 
 	private RuntimeContext runtimeContext(RequestContext context) {
-		return RuntimeContext.builder().sessionId(context.conversationId()).userId(context.agentIdText()).build();
+		return RuntimeContext.builder().sessionId(context.conversationId()).userId(GLOBAL_USER_ID).build();
 	}
 
 	private RequestContext normalize(AgentStreamRequest request) {

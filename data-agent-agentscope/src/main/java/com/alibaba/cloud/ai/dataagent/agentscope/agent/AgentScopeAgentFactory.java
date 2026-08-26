@@ -15,6 +15,8 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.agent;
 
+import static com.alibaba.cloud.ai.dataagent.agentscope.constant.DataAgentRuntimeConstants.GLOBAL_USER_ID;
+
 import com.alibaba.cloud.ai.dataagent.agentscope.config.AgentScopeDataAgentProperties;
 import com.alibaba.cloud.ai.dataagent.agentscope.entity.AgentConfiguration;
 import com.alibaba.cloud.ai.dataagent.agentscope.entity.ModelSettings;
@@ -28,13 +30,18 @@ import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
-import io.agentscope.core.state.JsonFileAgentStateStore;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
 import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.IsolationScope;
+import io.agentscope.harness.agent.filesystem.remote.store.BaseStore;
+import io.agentscope.harness.agent.filesystem.spec.RemoteFilesystemSpec;
+import io.agentscope.harness.agent.memory.MemoryConfig;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import java.time.Duration;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,7 +70,9 @@ public class AgentScopeAgentFactory {
 
 	private final LangfuseAgentScopeMiddleware langfuseMiddleware;
 
-	private final JsonFileAgentStateStore stateStore;
+	private final AgentStateStore stateStore;
+
+	private final BaseStore workspaceStore;
 
 	private final Path workspace;
 
@@ -71,13 +80,16 @@ public class AgentScopeAgentFactory {
 
 	public AgentScopeAgentFactory(DataAgentRegistryRepository repository, AgentScopeDataAgentProperties properties,
 			DataAgentMcpClientFactory mcpClientFactory, DatabaseSkillRepository databaseSkillRepository,
-			LangfuseTelemetry langfuseTelemetry, LangfuseAgentScopeMiddleware langfuseMiddleware) {
+			LangfuseTelemetry langfuseTelemetry, LangfuseAgentScopeMiddleware langfuseMiddleware,
+			BaseStore workspaceStore, AgentStateStore stateStore) {
 		this.repository = repository;
 		this.properties = properties;
 		this.mcpClientFactory = mcpClientFactory;
 		this.databaseSkillRepository = databaseSkillRepository;
 		this.langfuseTelemetry = langfuseTelemetry;
 		this.langfuseMiddleware = langfuseMiddleware;
+		this.workspaceStore = workspaceStore;
+		this.stateStore = stateStore;
 		Path stateDirectory = properties.getStateDirectory().toAbsolutePath().normalize();
 		this.workspace = stateDirectory.resolve("workspace");
 		try {
@@ -86,7 +98,6 @@ public class AgentScopeAgentFactory {
 		catch (IOException ex) {
 			throw new IllegalStateException("Unable to create AgentScope state directory", ex);
 		}
-		this.stateStore = new JsonFileAgentStateStore(stateDirectory);
 	}
 
 	public HarnessAgent get(long agentId) {
@@ -131,26 +142,30 @@ public class AgentScopeAgentFactory {
 			.model(createModel(settings))
 			.toolkit(toolkit)
 			.workspace(workspace)
+			.filesystem(new RemoteFilesystemSpec(workspaceStore).isolationScope(IsolationScope.USER)
+				.anonymousUserId(GLOBAL_USER_ID))
 			.stateStore(stateStore)
 			.maxIters(12)
+			.memory(MemoryConfig.builder()
+				.flushTrigger(MemoryConfig.FlushTrigger.throttled(Duration.ofMinutes(5)))
+				.dailyFileRetentionDays(90)
+				.sessionRetentionDays(180)
+				.build())
 			.compaction(CompactionConfig.builder()
 				.triggerMessages(Math.max(4, properties.getCompactionTriggerMessages()))
 				.keepMessages(Math.max(2, properties.getCompactionKeepMessages()))
 				.keepTokens(0)
-				.flushBeforeCompact(false)
-				.offloadBeforeCompact(false)
+				.flushBeforeCompact(true)
+				.offloadBeforeCompact(true)
 				.build())
 			.disableFilesystemTools()
 			.disableShellTool()
-			.disableMemoryTools()
-			.disableMemoryHooks()
 			.disableSubagents()
 			.disableDynamicSkills()
 			.disableDefaultWorkspaceSkills()
 			.disableDynamicSubagents()
 			.disableToolsConfig()
 			.disableAtPathExpansion()
-			.disableWorkspaceContext()
 			.permissionContext(PermissionContextState.builder().mode(PermissionMode.DEFAULT).build());
 		configureSkills(builder, enabledSkills);
 		if (langfuseTelemetry.isEnabled()) {

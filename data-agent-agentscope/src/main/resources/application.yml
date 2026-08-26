@@ -9,6 +9,13 @@ spring:
     username: ${DATA_AGENT_DATASOURCE_USERNAME:root}
     password: ${DATA_AGENT_DATASOURCE_PASSWORD:root}
     driver-class-name: ${DATA_AGENT_DATASOURCE_DRIVER:com.mysql.cj.jdbc.Driver}
+    hikari:
+      data-source-properties:
+        openTelemetry: DISABLED
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:sql/agentscope-schema.sql
 
 mybatis:
   configuration:

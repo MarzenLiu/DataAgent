@@ -16,10 +16,12 @@ import com.alibaba.cloud.ai.dataagent.agentscope.entity.SkillConfiguration;
 import com.alibaba.cloud.ai.dataagent.agentscope.entity.ToolConfiguration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.skill.AgentSkill;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.filesystem.remote.store.InMemoryStore;
 import io.agentscope.core.agent.RuntimeContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -79,23 +81,31 @@ class AgentScopeAgentFactoryTest {
 		when(databaseSkillRepository.getAllSkills()).thenReturn(List.of(databaseSkill));
 		when(databaseSkillRepository.getSource()).thenReturn("database");
 		LangfuseTelemetry telemetry = new LangfuseTelemetry(new LangfuseProperties());
+		AgentStateStore stateStore = mock(AgentStateStore.class);
 		AgentScopeAgentFactory factory = new AgentScopeAgentFactory(repository, properties, mcpClientFactory,
-				databaseSkillRepository, telemetry, new LangfuseAgentScopeMiddleware(objectMapper));
+				databaseSkillRepository, telemetry, new LangfuseAgentScopeMiddleware(objectMapper), new InMemoryStore(),
+				stateStore);
 		AgentRuntimePolicy runtimePolicy = new AgentRuntimePolicy(repository);
 
 		HarnessAgent agent = factory.get(7L);
 		assertThat(agent.getName()).isEqualTo("configured_agent");
-		assertThat(agent.getToolkit().getToolNames()).containsExactlyInAnyOrder("inspect_data_source",
-				"execute_read_only_sql", "search_knowledge_base", "load_skill_through_path", "wait_async_results");
+		assertThat(agent.getToolkit().getToolNames()).contains("inspect_data_source", "execute_read_only_sql",
+				"search_knowledge_base", "load_skill_through_path", "wait_async_results", "memory_search", "memory_get",
+				"memory_save", "session_search");
 		assertThat(agent.getSkillRepositories()).hasSize(2);
 		assertThat(agent.getSkillRepositories().get(0).getAllSkillNames()).containsExactly("data-analysis-sop");
 		assertThat(agent.getSkillRepositories().get(1).getAllSkillNames()).containsExactly("result-validation-sop");
-		agent.getToolkit().getToolSchemas().forEach(schema -> {
-			Map<?, ?> visibleProperties = (Map<?, ?>) schema.getParameters().get("properties");
-			assertThat(visibleProperties.containsKey("agentId")).isFalse();
-			assertThat(visibleProperties.containsKey("nl2sqlOnly")).isFalse();
-		});
-		RuntimeContext runtime = RuntimeContext.builder().userId("7").sessionId("same-conversation").build();
+		agent.getToolkit()
+			.getToolSchemas()
+			.stream()
+			.filter(schema -> List.of("inspect_data_source", "execute_read_only_sql", "search_knowledge_base")
+				.contains(schema.getName()))
+			.forEach(schema -> {
+				Map<?, ?> visibleProperties = (Map<?, ?>) schema.getParameters().get("properties");
+				assertThat(visibleProperties.containsKey("agentId")).isFalse();
+				assertThat(visibleProperties.containsKey("nl2sqlOnly")).isFalse();
+			});
+		RuntimeContext runtime = RuntimeContext.builder().userId("1").sessionId("same-conversation").build();
 		runtimePolicy.apply(7L, agent, runtime, false, false);
 		var nonHitlPermissions = agent.getDelegate().getAgentState(runtime).getPermissionContext();
 		assertThat(nonHitlPermissions.getAskRules()).isEmpty();

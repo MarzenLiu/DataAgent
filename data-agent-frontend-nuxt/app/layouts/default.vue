@@ -244,6 +244,15 @@
 									color="primary"
 									@click="navigateToPath('/system/model-config')"
 								/>
+								<v-list-item
+									prepend-icon="mdi-head-heart-outline"
+									title="记忆管理"
+									:active="isActive('/system/memories')"
+									density="compact"
+									class="rounded-lg mb-1 navigation-sub-item"
+									color="primary"
+									@click="navigateToPath('/system/memories')"
+								/>
 							</v-list-group>
 
 							<div class="mt-6 pt-4 border-t border-white/5">
@@ -355,6 +364,7 @@ const routeTitleMap: Record<string, string> = {
 	'/knowledge/semantic-models': '语义模型配置',
 	'/system/data-sources': '数据连接',
 	'/system/model-config': '模型配置',
+	'/system/memories': '记忆管理',
 	'/system/settings': '通用设置',
 	'/agent/new': '新建智能体',
 };
