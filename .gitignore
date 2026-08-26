@@ -59,6 +59,7 @@ modified_mcp_config.json
 uploads/*
 /vectorstore/
 /data-agent-management/vectorstore/
+/output/backups/
 /.agentscope/
 .java-version
 
