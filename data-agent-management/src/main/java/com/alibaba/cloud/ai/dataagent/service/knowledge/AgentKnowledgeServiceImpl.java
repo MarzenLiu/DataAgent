@@ -25,6 +25,8 @@ import com.alibaba.cloud.ai.dataagent.dto.knowledge.agentknowledge.UpdateKnowled
 import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.event.AgentKnowledgeDeletionEvent;
 import com.alibaba.cloud.ai.dataagent.event.AgentKnowledgeEmbeddingEvent;
+import com.alibaba.cloud.ai.dataagent.event.AgentKnowledgeParsingEvent;
+import com.alibaba.cloud.ai.dataagent.enums.KnowledgeReviewStatus;
 import com.alibaba.cloud.ai.dataagent.mapper.AgentKnowledgeMapper;
 import com.alibaba.cloud.ai.dataagent.service.file.FileStorageService;
 import com.alibaba.cloud.ai.dataagent.vo.AgentKnowledgeVO;
@@ -85,10 +87,16 @@ public class AgentKnowledgeServiceImpl implements AgentKnowledgeService {
 			throw new RuntimeException("Failed to create knowledge in database.");
 		}
 
-		eventPublisher
-			.publishEvent(new AgentKnowledgeEmbeddingEvent(this, knowledge.getId(), knowledge.getSplitterType()));
-		log.info("Knowledge created and event published. Id: {}, splitterType: {}", knowledge.getId(),
-				knowledge.getSplitterType());
+		if (KnowledgeType.DOCUMENT.equals(knowledge.getType())) {
+			eventPublisher.publishEvent(new AgentKnowledgeParsingEvent(this, knowledge.getId()));
+			log.info("Document knowledge created; parse review event published. Id: {}", knowledge.getId());
+		}
+		else {
+			eventPublisher
+				.publishEvent(new AgentKnowledgeEmbeddingEvent(this, knowledge.getId(), knowledge.getSplitterType()));
+			log.info("Knowledge created and embedding event published. Id: {}, splitterType: {}", knowledge.getId(),
+					knowledge.getSplitterType());
+		}
 
 		return agentKnowledgeConverter.toVo(knowledge);
 	}
@@ -202,6 +210,9 @@ public class AgentKnowledgeServiceImpl implements AgentKnowledgeService {
 	@Transactional
 	public void retryEmbedding(Integer id) {
 		AgentKnowledge knowledge = agentKnowledgeMapper.selectById(id);
+		if (knowledge == null) {
+			throw new RuntimeException("Knowledge not found.");
+		}
 		if (knowledge.getEmbeddingStatus().equals(EmbeddingStatus.PROCESSING)) {
 			throw new RuntimeException("BusinessKnowledge is processing, please wait.");
 		}
@@ -211,8 +222,26 @@ public class AgentKnowledgeServiceImpl implements AgentKnowledgeService {
 			throw new RuntimeException("BusinessKnowledge is not recalled, please recall it first.");
 		}
 
-		// 重置状态
-		// 立刻给用户反馈"已变成处理中"
+		if (KnowledgeType.DOCUMENT.equals(knowledge.getType())) {
+			KnowledgeReviewStatus reviewStatus = knowledge.getReviewStatus();
+			if (reviewStatus == KnowledgeReviewStatus.PENDING_REVIEW) {
+				throw new RuntimeException("Document is waiting for review.");
+			}
+			if (reviewStatus == KnowledgeReviewStatus.PARSING) {
+				throw new RuntimeException("Document is being parsed.");
+			}
+			if (reviewStatus != KnowledgeReviewStatus.APPROVED) {
+				knowledge.setReviewStatus(KnowledgeReviewStatus.PARSING);
+				knowledge.setEmbeddingStatus(EmbeddingStatus.PENDING);
+				knowledge.setErrorMsg("");
+				agentKnowledgeMapper.update(knowledge);
+				eventPublisher.publishEvent(new AgentKnowledgeParsingEvent(this, knowledge.getId()));
+				log.info("Retry parsing for document knowledgeId: {}", id);
+				return;
+			}
+		}
+
+		// 重置状态，立刻给用户反馈"已变成处理中"
 		knowledge.setEmbeddingStatus(EmbeddingStatus.PENDING);
 		knowledge.setErrorMsg("");
 		agentKnowledgeMapper.update(knowledge);

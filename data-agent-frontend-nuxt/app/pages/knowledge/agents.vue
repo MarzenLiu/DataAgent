@@ -189,6 +189,19 @@
 				</template>
 
 				<!-- eslint-disable-next-line vue/valid-v-slot -->
+				<template #item.reviewStatus="{ item }">
+					<v-chip
+						v-if="item.type === 'DOCUMENT'"
+						size="small"
+						variant="tonal"
+						:color="getReviewStatusColor(item.reviewStatus)"
+					>
+						{{ getReviewStatusLabel(item.reviewStatus) }}
+					</v-chip>
+					<span v-else class="text-medium-emphasis">—</span>
+				</template>
+
+				<!-- eslint-disable-next-line vue/valid-v-slot -->
 				<template #item.isRecall="{ item }">
 					<v-chip
 						:color="item.isRecall ? 'blue-darken-1' : 'grey'"
@@ -202,6 +215,18 @@
 				<!-- eslint-disable-next-line vue/valid-v-slot -->
 				<template #item.actions="{ item }">
 					<div class="d-flex ga-1 align-center">
+						<v-btn
+							v-if="item.type === 'DOCUMENT'"
+							size="small"
+							variant="tonal"
+							color="teal-darken-1"
+							prepend-icon="mdi-file-document-outline"
+							class="text-none px-3"
+							@click="openReview(item)"
+						>
+							审核
+							<v-tooltip activator="parent" location="top">解析预览</v-tooltip>
+						</v-btn>
 						<v-btn
 							size="small"
 							variant="text"
@@ -623,6 +648,7 @@ const headers = [
 		width: '150px',
 		sortable: false,
 	},
+	{ title: '审核状态', key: 'reviewStatus', width: '130px', sortable: false },
 	{ title: '召回状态', key: 'isRecall', width: '110px', sortable: false },
 	{ title: '创建时间', key: 'createdTime', width: '170px' },
 	{ title: '操作', key: 'actions', width: '170px', sortable: false },
@@ -688,6 +714,36 @@ function getEmbeddingStatusColor(status?: string) {
 		default:
 			return 'grey';
 	}
+}
+
+function getReviewStatusLabel(status?: string) {
+	const labels: Record<string, string> = {
+		PARSING: '解析中',
+		PENDING_REVIEW: '待审核',
+		APPROVED: '已通过',
+		REJECTED: '已驳回',
+		FAILED: '解析失败',
+	};
+	return status ? labels[status] || status : '等待解析';
+}
+
+function getReviewStatusColor(status?: string) {
+	const colors: Record<string, string> = {
+		PARSING: 'blue',
+		PENDING_REVIEW: 'warning',
+		APPROVED: 'success',
+		REJECTED: 'grey-darken-1',
+		FAILED: 'error',
+	};
+	return status ? colors[status] || 'grey' : 'grey';
+}
+
+function openReview(knowledge: AgentKnowledge) {
+	if (!knowledge.id) return;
+	void navigateTo({
+		path: '/knowledge/review',
+		query: { id: knowledge.id, agentId: agentId.value },
+	});
 }
 
 function toggleFilter() {

@@ -86,7 +86,7 @@ public class AgentKnowledgeController {
 				CreateKnowledgeDTO dto = buildCreateKnowledgeDTO(agentId, title, type, question, content, null,
 						splitterType);
 				AgentKnowledgeVO knowledge = agentKnowledgeService.createKnowledge(dto);
-				return ApiResponse.success("创建知识成功，后台向量存储开始更新，请耐心等待...", knowledge);
+				return ApiResponse.success(creationMessage(type), knowledge);
 			}).subscribeOn(Schedulers.boundedElastic());
 		}
 
@@ -105,9 +105,14 @@ public class AgentKnowledgeController {
 				CreateKnowledgeDTO dto = buildCreateKnowledgeDTO(agentId, title, type, question, content, multipartFile,
 						splitterType);
 				AgentKnowledgeVO knowledge = agentKnowledgeService.createKnowledge(dto);
-				return ApiResponse.success("创建知识成功，后台向量存储开始更新，请耐心等待...", knowledge);
+				return ApiResponse.success(creationMessage(type), knowledge);
 			}).subscribeOn(Schedulers.boundedElastic());
 		});
+	}
+
+	private String creationMessage(String type) {
+		return "DOCUMENT".equalsIgnoreCase(type) ? "文档已上传，后台正在解析；解析完成后请审核再发布。"
+				: "创建知识成功，后台向量存储开始更新，请耐心等待...";
 	}
 
 	private CreateKnowledgeDTO buildCreateKnowledgeDTO(String agentId, String title, String type, String question,

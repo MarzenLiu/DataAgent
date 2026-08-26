@@ -61,7 +61,9 @@ data-agent:
   docling:
     enabled: ${DOCLING_ENABLED:true}
     base-url: ${DOCLING_BASE_URL:http://localhost:5001}
-    api-key: ${DOCLING_API_KEY:}
+    # The bundled local Docling container uses this development key by default.
+    # Production deployments should override DOCLING_API_KEY explicitly.
+    api-key: ${DOCLING_API_KEY:data-agent-docling}
     connect-timeout: ${DOCLING_CONNECT_TIMEOUT:5s}
     read-timeout: ${DOCLING_READ_TIMEOUT:10m}
     async-poll-interval: ${DOCLING_POLL_INTERVAL:2s}

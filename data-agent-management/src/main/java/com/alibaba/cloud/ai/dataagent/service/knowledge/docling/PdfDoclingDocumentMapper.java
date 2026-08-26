@@ -26,6 +26,7 @@ import ai.docling.core.DoclingDocument.BaseTextItem;
 import ai.docling.core.DoclingDocument.DocItemLabel;
 import ai.docling.core.DoclingDocument.GroupItem;
 import ai.docling.core.DoclingDocument.PictureItem;
+import ai.docling.core.DoclingDocument.ProvenanceItem;
 import ai.docling.core.DoclingDocument.RefItem;
 import ai.docling.core.DoclingDocument.SectionHeaderItem;
 import ai.docling.core.DoclingDocument.TableCell;
@@ -53,10 +54,8 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 	@Override
 	public List<Document> map(DoclingDocument document, String sourceFilename) {
 		MappingContext context = new MappingContext(document, sourceFilename);
-		if (document.getBody() != null) {
-			traverseGroup(document.getBody(), context);
-		}
-		context.flushText();
+        traverseGroup(document.getBody(), context);
+        context.flushText();
 		return context.documents;
 	}
 
@@ -128,6 +127,8 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 
 		private Integer textPage;
 
+		private List<ProvenanceItem> textProvenance = List.of();
+
 		private List<String> textSectionPath = List.of();
 
 		private int chunkIndex;
@@ -154,6 +155,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			}
 			if (text.length() == 0) {
 				textPage = page;
+				textProvenance = item.getProv() == null ? List.of() : List.copyOf(item.getProv());
 				textSectionPath = List.copyOf(headings);
 			}
 			text.append(item.getText().strip()).append('\n');
@@ -175,9 +177,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			String sourceElementId = String.join(",", textElementIds);
 			Map<String, Object> metadata = DoclingMappingSupport.baseMetadata(document, sourceFilename, "text",
 					sourceElementId);
-			if (textPage != null) {
-				metadata.put(DocumentMetadataConstant.PAGE_NUMBER, textPage);
-			}
+			DoclingMappingSupport.addProvenance(metadata, textProvenance);
 			if (!textSectionPath.isEmpty()) {
 				metadata.put(DocumentMetadataConstant.SECTION_PATH, String.join(" > ", textSectionPath));
 			}
@@ -190,6 +190,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			text.setLength(0);
 			textElementIds.clear();
 			textPage = null;
+			textProvenance = List.of();
 			textSectionPath = List.of();
 		}
 

@@ -354,3 +354,54 @@ CREATE TABLE IF NOT EXISTS `model_config` (
   `proxy_password` varchar(255) DEFAULT NULL COMMENT '代理密码（可选）',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS knowledge_parse_revision (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  knowledge_id INT NOT NULL,
+  revision_no INT NOT NULL,
+  status VARCHAR(30) NOT NULL,
+  parser VARCHAR(50) NOT NULL,
+  parser_version VARCHAR(100) NOT NULL,
+  chunk_count INT NOT NULL DEFAULT 0,
+  warning_count INT NOT NULL DEFAULT 0,
+  review_comment VARCHAR(1000),
+  error_msg VARCHAR(1000),
+  created_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_time TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE (knowledge_id, revision_no),
+  FOREIGN KEY (knowledge_id) REFERENCES agent_knowledge (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS knowledge_parse_chunk (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  revision_id BIGINT NOT NULL,
+  document_id VARCHAR(64) NOT NULL,
+  chunk_index INT NOT NULL,
+  content LONGTEXT NOT NULL,
+  content_type VARCHAR(50) NOT NULL,
+  page_number INT,
+  bounding_box VARCHAR(255),
+  section_path VARCHAR(1000),
+  metadata_json LONGTEXT NOT NULL,
+  quality_score INT NOT NULL DEFAULT 100,
+  quality_flags_json LONGTEXT NOT NULL,
+  is_excluded INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE (revision_id, chunk_index),
+  FOREIGN KEY (revision_id) REFERENCES knowledge_parse_revision (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS agent_workspace_store (
+  store_key CHAR(64) NOT NULL,
+  namespace_hash CHAR(64) NOT NULL,
+  namespace_key VARCHAR(1000) NOT NULL,
+  item_key VARCHAR(1000) NOT NULL,
+  value_json LONGTEXT NOT NULL,
+  version BIGINT NOT NULL DEFAULT 1,
+  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (store_key),
+  INDEX idx_agent_workspace_namespace_hash (namespace_hash)
+) ENGINE=InnoDB;

@@ -16,6 +16,7 @@
 package com.alibaba.cloud.ai.dataagent.vo;
 
 import com.alibaba.cloud.ai.dataagent.enums.EmbeddingStatus;
+import com.alibaba.cloud.ai.dataagent.enums.KnowledgeReviewStatus;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -49,11 +50,17 @@ public class AgentKnowledgeVO {
 	// 向量化状态：PENDING待处理，PROCESSING处理中，COMPLETED已完成，FAILED失败
 	private EmbeddingStatus embeddingStatus;
 
+	private KnowledgeReviewStatus reviewStatus;
+
 	// 操作失败的错误信息
 	private String errorMsg;
 
 	// 分块策略类型：token, recursive
 	private String splitterType;
+
+	private String sourceFilename;
+
+	private String fileType;
 
 	@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
 	private LocalDateTime createdTime;

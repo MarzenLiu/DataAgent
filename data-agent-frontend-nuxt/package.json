@@ -22,6 +22,7 @@
     "markdown-it": "^14.1.1",
     "markdown-it-container": "^4.0.0",
     "nuxt": "^4.3.0",
+    "pdfjs-dist": "^6.2.108",
     "pinia": "^3.0.4",
     "pnpm": "^11.9.0",
     "prettier": "^3.8.1",

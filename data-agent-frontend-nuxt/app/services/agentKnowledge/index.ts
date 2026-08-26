@@ -40,6 +40,12 @@ export interface AgentKnowledge {
   isRecall?: boolean;
   /** 向量化状态 */
   embeddingStatus?: string;
+	/** 文档解析审核状态 */
+	reviewStatus?: string;
+	/** 上传时的原始文件名 */
+	sourceFilename?: string;
+	/** 文件媒体类型 */
+	fileType?: string;
   /** 错误信息 */
   errorMsg?: string;
   /** 创建时间 */
@@ -86,12 +92,71 @@ export interface PageResult<T> {
   message?: string;
 }
 
+export interface KnowledgeParseChunk {
+	id: number;
+	documentId: string;
+	chunkIndex: number;
+	content: string;
+	contentType: string;
+	pageNumber?: number;
+	boundingBox?: string;
+	sectionPath?: string;
+	qualityScore: number;
+	qualityFlags: string[];
+	excluded: boolean;
+}
+
+export interface KnowledgeParsePreview {
+	knowledgeId: number;
+	title: string;
+	sourceFilename?: string;
+	fileType?: string;
+	revisionId: number;
+	revisionNo: number;
+	status: string;
+	parser: string;
+	parserVersion: string;
+	chunkCount: number;
+	warningCount: number;
+	reviewComment?: string;
+	errorMsg?: string;
+	createdTime?: string;
+	chunks: KnowledgeParseChunk[];
+}
+
 const API_BASE_URL = '/api/agent-knowledge';
 
 /**
  * @description 智能体知识库业务逻辑处理类
  */
 class AgentKnowledgeService {
+	async getParsePreview(id: number): Promise<KnowledgeParsePreview> {
+		const response = await axios.get<{
+			success: boolean;
+			data: KnowledgeParsePreview;
+		}>(`${API_BASE_URL}/${id}/review`);
+		return response.data.data;
+	}
+
+	async approveParse(id: number, comment?: string): Promise<void> {
+		await axios.post(`${API_BASE_URL}/${id}/review/approve`, { comment });
+	}
+
+	async rejectParse(id: number, comment?: string): Promise<void> {
+		await axios.post(`${API_BASE_URL}/${id}/review/reject`, { comment });
+	}
+
+	parseSourceUrl(id: number): string {
+		return `${API_BASE_URL}/${id}/review/source`;
+	}
+
+	async getParseSource(id: number): Promise<Blob> {
+		const response = await axios.get(`${API_BASE_URL}/${id}/review/source`, {
+			responseType: 'blob',
+		});
+		return response.data;
+	}
+
   /**
    * @description 分页查询知识列表
    * @param {AgentKnowledgeQueryDTO} queryDTO - 查询条件

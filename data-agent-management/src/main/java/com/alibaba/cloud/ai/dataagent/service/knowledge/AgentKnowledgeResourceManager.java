@@ -84,13 +84,29 @@ public class AgentKnowledgeResourceManager {
 	private void processDocumentKnowledge(AgentKnowledge knowledge) {
 
 		// 处理文档
+		List<Document> documents = parseDocument(knowledge);
+		publishDocuments(knowledge, documents);
+	}
+
+	/** Parse and split a source document without writing anything to the vector store. */
+	public List<Document> parseDocument(AgentKnowledge knowledge) {
+		if (!KnowledgeType.DOCUMENT.equals(knowledge.getType())) {
+			throw new IllegalArgumentException("Only document knowledge can be parsed");
+		}
 		List<Document> documents = getAndSplitDocument(knowledge);
 		if (documents == null || documents.isEmpty()) {
 			log.error("No documents extracted from file: knowledgeId={}, filePath={}", knowledge.getId(),
 					knowledge.getFilePath());
 			throw new RuntimeException("No documents extracted from file");
 		}
+		return documents;
+	}
 
+	/** Publish a previously reviewed set of chunks to the vector store. */
+	public void publishDocuments(AgentKnowledge knowledge, List<Document> documents) {
+		if (documents == null || documents.isEmpty()) {
+			throw new IllegalArgumentException("Approved documents must not be empty");
+		}
 		// 使用工具类为文档添加元数据
 		List<Document> documentsWithMetadata = DocumentConverterUtil
 			.convertAgentKnowledgeDocumentsWithMetadata(documents, knowledge);
@@ -99,7 +115,6 @@ public class AgentKnowledgeResourceManager {
 		agentVectorStoreService.replaceDocumentsByMetadata(replacementMetadata(knowledge), documentsWithMetadata);
 		log.info("Successfully vectorized DOCUMENT knowledge: id={}, filePath={}, documentCount={}, splitterType={}",
 				knowledge.getId(), knowledge.getFilePath(), documentsWithMetadata.size(), knowledge.getSplitterType());
-
 	}
 
 	private Map<String, Object> replacementMetadata(AgentKnowledge knowledge) {
@@ -131,7 +146,12 @@ public class AgentKnowledgeResourceManager {
 		List<Document> documents;
 		try (var inputStream = resource.getInputStream()) {
 			String content = new Tika().parseToString(inputStream);
-			documents = List.of(new Document(content));
+			Map<String, Object> metadata = new HashMap<>();
+			metadata.put(DocumentMetadataConstant.PARSER, "tika");
+			metadata.put(DocumentMetadataConstant.PARSER_VERSION, "fallback");
+			metadata.put(DocumentMetadataConstant.SOURCE_FILENAME, knowledge.getSourceFilename());
+			metadata.put(DocumentMetadataConstant.ELEMENT_TYPE, "text");
+			documents = List.of(new Document(content, metadata));
 		}
 		catch (Exception ex) {
 			throw new IllegalStateException("Failed to parse knowledge document", ex);

@@ -19,6 +19,7 @@ import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.enums.EmbeddingStatus;
 import com.alibaba.cloud.ai.dataagent.mapper.AgentKnowledgeMapper;
 import com.alibaba.cloud.ai.dataagent.service.knowledge.AgentKnowledgeResourceManager;
+import com.alibaba.cloud.ai.dataagent.service.knowledge.AgentKnowledgeReviewService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,9 +41,13 @@ class AgentKnowledgeEventListenerTest {
 	@Mock
 	private AgentKnowledgeResourceManager agentKnowledgeResourceManager;
 
+	@Mock
+	private AgentKnowledgeReviewService agentKnowledgeReviewService;
+
 	@BeforeEach
 	void setUp() {
-		listener = new AgentKnowledgeEventListener(agentKnowledgeMapper, agentKnowledgeResourceManager);
+		listener = new AgentKnowledgeEventListener(agentKnowledgeMapper, agentKnowledgeResourceManager,
+				agentKnowledgeReviewService);
 	}
 
 	@Test

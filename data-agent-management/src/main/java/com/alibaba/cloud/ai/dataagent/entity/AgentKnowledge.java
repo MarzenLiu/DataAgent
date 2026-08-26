@@ -16,6 +16,7 @@
 package com.alibaba.cloud.ai.dataagent.entity;
 
 import com.alibaba.cloud.ai.dataagent.enums.EmbeddingStatus;
+import com.alibaba.cloud.ai.dataagent.enums.KnowledgeReviewStatus;
 import com.alibaba.cloud.ai.dataagent.enums.KnowledgeType;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
@@ -52,6 +53,9 @@ public class AgentKnowledge {
 
 	// 向量化状态：PENDING待处理，PROCESSING处理中，COMPLETED已完成，FAILED失败
 	private EmbeddingStatus embeddingStatus;
+
+	// 文档解析审核状态；QA/FAQ 为 NOT_REQUIRED
+	private KnowledgeReviewStatus reviewStatus;
 
 	// 操作失败的错误信息
 	private String errorMsg;

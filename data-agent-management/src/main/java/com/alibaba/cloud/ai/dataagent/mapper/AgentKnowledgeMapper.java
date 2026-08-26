@@ -26,12 +26,22 @@ import java.util.List;
 public interface AgentKnowledgeMapper {
 
 	@Select("""
-			SELECT * FROM agent_knowledge WHERE id = #{id} AND is_deleted = 0
+			SELECT ak.*,
+				CASE WHEN ak.type != 'DOCUMENT' THEN 'NOT_REQUIRED'
+				ELSE (SELECT CASE WHEN r.status = 'PUBLISHED' THEN 'APPROVED' ELSE r.status END
+					FROM knowledge_parse_revision r WHERE r.knowledge_id = ak.id ORDER BY r.revision_no DESC LIMIT 1)
+				END AS review_status
+			FROM agent_knowledge ak WHERE ak.id = #{id} AND ak.is_deleted = 0
 			""")
 	AgentKnowledge selectById(@Param("id") Integer id);
 
 	@Select("""
-			    SELECT * FROM agent_knowledge WHERE id = #{id}
+			    SELECT ak.*,
+				CASE WHEN ak.type != 'DOCUMENT' THEN 'NOT_REQUIRED'
+				ELSE (SELECT CASE WHEN r.status = 'PUBLISHED' THEN 'APPROVED' ELSE r.status END
+					FROM knowledge_parse_revision r WHERE r.knowledge_id = ak.id ORDER BY r.revision_no DESC LIMIT 1)
+				END AS review_status
+				FROM agent_knowledge ak WHERE ak.id = #{id}
 			""")
 	AgentKnowledge selectByIdIncludeDeleted(@Param("id") Integer id);
 
@@ -76,8 +86,13 @@ public interface AgentKnowledgeMapper {
 
 	@Select("""
 			<script>
-			SELECT * FROM agent_knowledge
-			WHERE agent_id = #{queryDTO.agentId}
+			SELECT ak.*,
+				CASE WHEN ak.type != 'DOCUMENT' THEN 'NOT_REQUIRED'
+				ELSE (SELECT CASE WHEN r.status = 'PUBLISHED' THEN 'APPROVED' ELSE r.status END
+					FROM knowledge_parse_revision r WHERE r.knowledge_id = ak.id ORDER BY r.revision_no DESC LIMIT 1)
+				END AS review_status
+			FROM agent_knowledge ak
+			WHERE ak.agent_id = #{queryDTO.agentId}
 			<if test="queryDTO.title != null and queryDTO.title != ''">
 				AND title LIKE CONCAT('%', #{queryDTO.title}, '%')
 			</if>
@@ -127,6 +142,10 @@ public interface AgentKnowledgeMapper {
 			WHERE embedding_status = 'PENDING'
 			  AND is_recall = 1
 			  AND is_deleted = 0
+			  AND (type != 'DOCUMENT' OR EXISTS (
+				SELECT 1 FROM knowledge_parse_revision r
+				WHERE r.knowledge_id = agent_knowledge.id AND r.status = 'APPROVED'
+			  ))
 			ORDER BY id
 			""")
 	List<AgentKnowledge> selectPendingAndRecalled();

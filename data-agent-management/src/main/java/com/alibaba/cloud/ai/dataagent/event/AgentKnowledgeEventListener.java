@@ -16,9 +16,12 @@
 package com.alibaba.cloud.ai.dataagent.event;
 
 import com.alibaba.cloud.ai.dataagent.enums.EmbeddingStatus;
+import com.alibaba.cloud.ai.dataagent.enums.KnowledgeReviewStatus;
+import com.alibaba.cloud.ai.dataagent.enums.KnowledgeType;
 import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.mapper.AgentKnowledgeMapper;
 import com.alibaba.cloud.ai.dataagent.service.knowledge.AgentKnowledgeResourceManager;
+import com.alibaba.cloud.ai.dataagent.service.knowledge.AgentKnowledgeReviewService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -37,6 +40,15 @@ public class AgentKnowledgeEventListener {
 
 	private final AgentKnowledgeResourceManager agentKnowledgeResourceManager;
 
+	private final AgentKnowledgeReviewService agentKnowledgeReviewService;
+
+	@Async("dbOperationExecutor")
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	public void handleParsingEvent(AgentKnowledgeParsingEvent event) {
+		log.info("Received AgentKnowledgeParsingEvent. agentKnowledgeId: {}", event.getKnowledgeId());
+		agentKnowledgeReviewService.parseForReview(event.getKnowledgeId());
+	}
+
 	/**
 	 * phase = TransactionPhase.AFTER_COMMIT 核心作用：只有当 Service 层的主事务提交成功后，才会执行这个方法。
 	 */
@@ -52,13 +64,25 @@ public class AgentKnowledgeEventListener {
 			log.error("Knowledge not found during async processing. Id: {}", id);
 			return;
 		}
+		if (KnowledgeType.DOCUMENT.equals(knowledge.getType())
+				&& knowledge.getReviewStatus() != KnowledgeReviewStatus.APPROVED) {
+			log.warn("Skipping document embedding without an approved parse revision. Id: {}", id);
+			return;
+		}
 
 		try {
 			// 2. 更新状态为 PROCESSING
 			updateStatus(knowledge, EmbeddingStatus.PROCESSING, null);
 
 			// 3. 执行核心向量化逻辑
-			agentKnowledgeResourceManager.doEmbedingToVectorStore(knowledge);
+			if (KnowledgeType.DOCUMENT.equals(knowledge.getType())) {
+				agentKnowledgeResourceManager.publishDocuments(knowledge,
+						agentKnowledgeReviewService.getApprovedDocuments(knowledge));
+				agentKnowledgeReviewService.markPublished(id);
+			}
+			else {
+				agentKnowledgeResourceManager.doEmbedingToVectorStore(knowledge);
+			}
 
 			// 4. 更新状态为 COMPLETED
 			updateStatus(knowledge, EmbeddingStatus.COMPLETED, null);

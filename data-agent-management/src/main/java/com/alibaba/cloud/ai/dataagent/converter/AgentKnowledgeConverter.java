@@ -19,6 +19,7 @@ import com.alibaba.cloud.ai.dataagent.dto.knowledge.agentknowledge.CreateKnowled
 import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.enums.EmbeddingStatus;
 import com.alibaba.cloud.ai.dataagent.enums.KnowledgeType;
+import com.alibaba.cloud.ai.dataagent.enums.KnowledgeReviewStatus;
 import com.alibaba.cloud.ai.dataagent.vo.AgentKnowledgeVO;
 import org.springframework.stereotype.Component;
 
@@ -38,7 +39,10 @@ public class AgentKnowledgeConverter {
 		vo.setContent(po.getContent());
 		vo.setIsRecall(po.getIsRecall() == 1);
 		vo.setEmbeddingStatus(po.getEmbeddingStatus());
+		vo.setReviewStatus(po.getReviewStatus());
 		vo.setSplitterType(po.getSplitterType());
+		vo.setSourceFilename(po.getSourceFilename());
+		vo.setFileType(po.getFileType());
 		vo.setErrorMsg(po.getErrorMsg());
 		vo.setCreatedTime(po.getCreatedTime());
 		vo.setUpdatedTime(po.getUpdatedTime());
@@ -56,6 +60,8 @@ public class AgentKnowledgeConverter {
 		knowledge.setIsRecall(1); // 默认为召回状态
 		knowledge.setIsDeleted(0); // 默认为未删除
 		knowledge.setEmbeddingStatus(EmbeddingStatus.PENDING); // 初始状态为待处理
+		knowledge.setReviewStatus(KnowledgeType.DOCUMENT.equals(knowledge.getType()) ? KnowledgeReviewStatus.PARSING
+				: KnowledgeReviewStatus.NOT_REQUIRED);
 		knowledge.setIsResourceCleaned(0); // 默认为物理资源未清理
 
 		// 设置创建和更新时间

@@ -96,6 +96,7 @@ class PdfDoclingDocumentMapperTest {
 		assertThat(chunks).hasSize(3);
 		assertThat(chunks.get(0).getText()).contains("标题路径: 财务分析", "本期收入增长");
 		assertThat(chunks.get(0).getMetadata()).containsEntry(DocumentMetadataConstant.PAGE_NUMBER, 2)
+			.containsEntry(DocumentMetadataConstant.BOUNDING_BOX, "1.0,2.0,3.0,4.0")
 			.containsEntry(DocumentMetadataConstant.SECTION_PATH, "财务分析")
 			.containsEntry(DocumentMetadataConstant.PARSER, "docling");
 		assertThat(chunks.get(1).getText()).contains("| 区域 | 收入 |", "| 华东 | 100 |");

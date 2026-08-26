@@ -99,7 +99,7 @@ public class DoclingDocumentReader {
             if ("failure".equalsIgnoreCase(inBody.getStatus()) || "skipped".equalsIgnoreCase(inBody.getStatus())) {
                 throw new IllegalStateException("Docling conversion failed with status: " + inBody.getStatus());
             }
-            DoclingDocument document = inBody.getDocument() == null ? null : inBody.getDocument().getJsonContent();
+            DoclingDocument document = inBody.getDocument().getJsonContent();
             if (document == null) {
                 throw new IllegalStateException("Docling response did not contain json_content");
             }
