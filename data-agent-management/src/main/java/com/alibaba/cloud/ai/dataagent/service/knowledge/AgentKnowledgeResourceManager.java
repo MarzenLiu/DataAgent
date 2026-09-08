@@ -147,8 +147,8 @@ public class AgentKnowledgeResourceManager {
 		try (var inputStream = resource.getInputStream()) {
 			String content = new Tika().parseToString(inputStream);
 			Map<String, Object> metadata = new HashMap<>();
-			metadata.put(DocumentMetadataConstant.PARSER, "tika");
-			metadata.put(DocumentMetadataConstant.PARSER_VERSION, "fallback");
+			metadata.put(DocumentMetadataConstant.PARSER, fallbackParser(knowledge));
+			metadata.put(DocumentMetadataConstant.PARSER_VERSION, fallbackParserVersion(knowledge));
 			metadata.put(DocumentMetadataConstant.SOURCE_FILENAME, knowledge.getSourceFilename());
 			metadata.put(DocumentMetadataConstant.ELEMENT_TYPE, "text");
 			documents = List.of(new Document(content, metadata));
@@ -162,6 +162,21 @@ public class AgentKnowledgeResourceManager {
 		log.info("Using splitter type: {} for document splitting", knowledge.getSplitterType());
 
 		return splitter.apply(documents);
+	}
+
+	static String fallbackParser(AgentKnowledge knowledge) {
+		return isLegacyWordDocument(knowledge) ? "tika-poi-hwpf" : "tika";
+	}
+
+	static String fallbackParserVersion(AgentKnowledge knowledge) {
+		return isLegacyWordDocument(knowledge) ? "poi-legacy-doc" : "fallback";
+	}
+
+	private static boolean isLegacyWordDocument(AgentKnowledge knowledge) {
+		String filename = knowledge.getSourceFilename();
+		return filename != null && filename.toLowerCase(java.util.Locale.ROOT).endsWith(".doc")
+				|| "application/msword".equalsIgnoreCase(knowledge.getFileType())
+				|| "doc".equalsIgnoreCase(knowledge.getFileType());
 	}
 
 	/**

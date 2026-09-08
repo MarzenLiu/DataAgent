@@ -17,6 +17,8 @@ package com.alibaba.cloud.ai.dataagent.properties;
 
 import java.time.Duration;
 
+import ai.docling.serve.api.convert.request.options.PdfBackend;
+import ai.docling.serve.api.convert.request.options.TableFormerMode;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -42,15 +44,43 @@ public class DoclingProperties {
 
 	private boolean fallbackToTika = true;
 
+	private final HybridChunking hybridChunking = new HybridChunking();
+
 	private final Pdf pdf = new Pdf();
 
 	private final Excel excel = new Excel();
+
+	private final Word word = new Word();
+
+	@Getter
+	@Setter
+	public static class HybridChunking {
+
+		private boolean enabled = true;
+
+		private int maxTokens = 512;
+
+		private String tokenizer = "sentence-transformers/all-MiniLM-L6-v2";
+
+		private boolean mergePeers = true;
+
+		private boolean useMarkdownTables = true;
+
+	}
 
 	@Getter
 	@Setter
 	public static class Pdf {
 
 		private boolean ocrEnabled = true;
+
+		private PdfBackend backend = PdfBackend.PYPDFIUM2;
+
+		private boolean includeImages;
+
+		private boolean tableStructureEnabled = true;
+
+		private TableFormerMode tableMode = TableFormerMode.FAST;
 
 		private int maxTableRowsPerChunk = 20;
 
@@ -61,6 +91,14 @@ public class DoclingProperties {
 	public static class Excel {
 
 		private int maxTableRowsPerChunk = 50;
+
+	}
+
+	@Getter
+	@Setter
+	public static class Word {
+
+		private int maxTableRowsPerChunk = 30;
 
 	}
 

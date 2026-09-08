@@ -22,8 +22,8 @@ import java.util.List;
 /** Read model used by the three-pane document review page. */
 public record KnowledgeParsePreviewVO(Integer knowledgeId, String title, String sourceFilename, String fileType,
 		Long revisionId, Integer revisionNo, ParseRevisionStatus status, String parser, String parserVersion,
-		Integer chunkCount, Integer warningCount, String reviewComment, String errorMsg, LocalDateTime createdTime,
-		List<ChunkVO> chunks) {
+		String splitterType, Integer chunkCount, Integer warningCount, String reviewComment, String errorMsg,
+		LocalDateTime createdTime, List<ChunkVO> chunks) {
 
 	public record ChunkVO(Long id, String documentId, Integer chunkIndex, String content, String contentType,
 			Integer pageNumber, String boundingBox, String sectionPath, Integer qualityScore, List<String> qualityFlags,

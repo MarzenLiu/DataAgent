@@ -27,14 +27,16 @@ import java.util.Locale;
 
 import ai.docling.core.DoclingDocument;
 import ai.docling.serve.api.DoclingServeApi;
+import ai.docling.serve.api.chunk.request.HybridChunkDocumentRequest;
+import ai.docling.serve.api.chunk.request.options.HybridChunkerOptions;
 import ai.docling.serve.api.convert.request.ConvertDocumentRequest;
 import ai.docling.serve.api.convert.request.options.ConvertDocumentOptions;
 import ai.docling.serve.api.convert.request.options.ImageRefMode;
 import ai.docling.serve.api.convert.request.options.InputFormat;
 import ai.docling.serve.api.convert.request.options.OutputFormat;
-import ai.docling.serve.api.convert.request.options.TableFormerMode;
 import ai.docling.serve.api.convert.response.InBodyConvertDocumentResponse;
 import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
+import com.alibaba.cloud.ai.dataagent.enums.SplitterType;
 import com.alibaba.cloud.ai.dataagent.properties.DoclingProperties;
 import com.alibaba.cloud.ai.dataagent.service.knowledge.TextSplitterFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -56,13 +58,15 @@ public class DoclingDocumentReader {
 
 	private final TextSplitterFactory textSplitterFactory;
 
+	private final DoclingHybridChunkMapper hybridChunkMapper;
 
-	public	DoclingDocumentReader(DoclingProperties properties, DoclingServeApi client, List<DoclingDocumentMapper> mappers,
-			TextSplitterFactory textSplitterFactory) {
+	public DoclingDocumentReader(DoclingProperties properties, DoclingServeApi client, List<DoclingDocumentMapper> mappers,
+			TextSplitterFactory textSplitterFactory, DoclingHybridChunkMapper hybridChunkMapper) {
 		this.properties = properties;
 		this.client = client;
 		this.mappers = mappers;
 		this.textSplitterFactory = textSplitterFactory;
+		this.hybridChunkMapper = hybridChunkMapper;
 	}
 
 	public boolean supports(String sourceFilename, String fileType) {
@@ -88,27 +92,67 @@ public class DoclingDocumentReader {
 			.findFirst()
 			.orElseThrow(() -> new IllegalArgumentException("Unsupported Docling document format: " + extension));
 
-        try (MaterializedResource materialized = materialize(resource, filename, extension)) {
-            ConvertDocumentRequest request = ConvertDocumentRequest.builder()
-                    .options(options(extension))
-                    .build();
-            var response = client.convertFilesAsync(request, materialized.path()).toCompletableFuture().join();
-            if (!(response instanceof InBodyConvertDocumentResponse inBody)) {
-                throw new IllegalStateException("Docling returned unsupported response type: " + response.getResponseType());
-            }
-            if ("failure".equalsIgnoreCase(inBody.getStatus()) || "skipped".equalsIgnoreCase(inBody.getStatus())) {
-                throw new IllegalStateException("Docling conversion failed with status: " + inBody.getStatus());
-            }
-            DoclingDocument document = inBody.getDocument().getJsonContent();
-            if (document == null) {
-                throw new IllegalStateException("Docling response did not contain json_content");
-            }
-            List<Document> mapped = mapper.map(document, filename);
-            List<Document> result = "pdf".equals(extension) ? splitPdfText(mapped, splitterType) : mapped;
-            log.info("Docling parsed document: filename={}, format={}, status={}, chunks={}", filename, extension,
-                    inBody.getStatus(), result.size());
-            return result;
-        }
+		try (MaterializedResource materialized = materialize(resource, filename, extension)) {
+			if (useHybridChunker(extension, splitterType)) {
+				try {
+					return readHybrid(materialized.path(), filename, extension);
+				}
+				catch (RuntimeException ex) {
+					log.warn("Docling hybrid chunking failed; falling back to local token splitting: filename={}", filename,
+							ex);
+				}
+			}
+			ConvertDocumentRequest request = ConvertDocumentRequest.builder().options(options(extension)).build();
+			var response = client.convertFilesAsync(request, materialized.path()).toCompletableFuture().join();
+			if (!(response instanceof InBodyConvertDocumentResponse inBody)) {
+				throw new IllegalStateException("Docling returned unsupported response type: " + response.getResponseType());
+			}
+			if ("failure".equalsIgnoreCase(inBody.getStatus()) || "skipped".equalsIgnoreCase(inBody.getStatus())) {
+				throw new IllegalStateException("Docling conversion failed with status: " + inBody.getStatus());
+			}
+			DoclingDocument document = inBody.getDocument().getJsonContent();
+			if (document == null) {
+				throw new IllegalStateException("Docling response did not contain json_content");
+			}
+			List<Document> mapped = mapper.map(document, filename);
+			String fallbackSplitter = SplitterType.DOCLING_HYBRID.getValue().equals(splitterType)
+					? SplitterType.TOKEN.getValue() : splitterType;
+			List<Document> result = isFlowDocument(extension) ? splitFlowDocumentText(mapped, fallbackSplitter) : mapped;
+			log.info("Docling parsed document: filename={}, format={}, status={}, chunks={}", filename, extension,
+					inBody.getStatus(), result.size());
+			return result;
+		}
+	}
+
+	private boolean useHybridChunker(String extension, String splitterType) {
+		return "pdf".equals(extension) && properties.getHybridChunking().isEnabled()
+				&& SplitterType.DOCLING_HYBRID.getValue().equals(splitterType);
+	}
+
+	private List<Document> readHybrid(Path path, String filename, String extension) {
+		DoclingProperties.HybridChunking settings = properties.getHybridChunking();
+        HybridChunkerOptions.Builder optionsBuilder = HybridChunkerOptions.builder()
+			.useMarkdownTables(settings.isUseMarkdownTables())
+			.includeRawText(true)
+			.mergePeers(settings.isMergePeers());
+		if (settings.getMaxTokens() > 0) {
+			optionsBuilder.maxTokens(settings.getMaxTokens());
+		}
+		if (StringUtils.hasText(settings.getTokenizer())) {
+			optionsBuilder.tokenizer(settings.getTokenizer());
+		}
+		HybridChunkDocumentRequest request = HybridChunkDocumentRequest.builder()
+			.options(options(extension))
+			.chunkingOptions(optionsBuilder.build())
+			.includeConvertedDoc(true)
+			.build();
+		var response = client.chunkFilesWithHybridChunkerAsync(request, path).toCompletableFuture().join();
+		List<Document> result = hybridChunkMapper.map(response, filename);
+		if (result.isEmpty()) {
+			throw new IllegalStateException("Docling hybrid chunking returned no chunks");
+		}
+		log.info("Docling hybrid chunked document: filename={}, format={}, chunks={}", filename, extension, result.size());
+		return result;
 	}
 
 	private ConvertDocumentOptions options(String extension) {
@@ -120,9 +164,16 @@ public class DoclingDocumentReader {
 			.abortOnError(false)
 			.documentTimeout(properties.getAsyncTimeout());
 		if ("pdf".equals(extension)) {
+			DoclingProperties.Pdf pdf = properties.getPdf();
 			builder.fromFormat(InputFormat.PDF)
+				.pdfBackend(pdf.getBackend())
 				.doOcr(properties.getPdf().isOcrEnabled())
-				.tableMode(TableFormerMode.ACCURATE);
+				.includeImages(pdf.isIncludeImages())
+				.doTableStructure(pdf.isTableStructureEnabled())
+				.tableMode(pdf.getTableMode());
+		}
+		else if ("docx".equals(extension)) {
+			builder.fromFormat(InputFormat.DOCX).doOcr(false);
 		}
 		else {
 			builder.fromFormat(InputFormat.XLSX).doOcr(false);
@@ -130,7 +181,11 @@ public class DoclingDocumentReader {
 		return builder.build();
 	}
 
-	private List<Document> splitPdfText(List<Document> documents, String splitterType) {
+	private boolean isFlowDocument(String extension) {
+		return "pdf".equals(extension) || "docx".equals(extension);
+	}
+
+	private List<Document> splitFlowDocumentText(List<Document> documents, String splitterType) {
 		TextSplitter splitter = textSplitterFactory.getSplitter(splitterType);
 		List<Document> result = new ArrayList<>();
 		for (Document document : documents) {
@@ -181,7 +236,16 @@ public class DoclingDocumentReader {
 		}
 		candidate = candidate.toLowerCase(Locale.ROOT);
 		int dot = candidate.lastIndexOf('.');
-		return dot >= 0 ? candidate.substring(dot + 1) : candidate.replace("application/", "");
+		if (!candidate.contains("/") && dot >= 0) {
+			return candidate.substring(dot + 1);
+		}
+		return switch (candidate) {
+			case "application/pdf", "pdf" -> "pdf";
+			case "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx" -> "docx";
+			case "application/msword", "doc" -> "doc";
+			case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx" -> "xlsx";
+			default -> candidate.replace("application/", "");
+		};
 	}
 
 	private record MaterializedResource(Path path) implements AutoCloseable {

@@ -11,7 +11,9 @@ import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.middleware.ModelCallInput;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
+import io.agentscope.core.model.ToolSchema;
 import io.opentelemetry.api.baggage.Baggage;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
@@ -27,6 +29,7 @@ import io.opentelemetry.sdk.trace.export.SpanExporter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 
@@ -86,7 +89,21 @@ class LangfuseObservabilityTest {
 			LangfuseAgentScopeMiddleware middleware = new LangfuseAgentScopeMiddleware(new ObjectMapper());
 			Agent agent = mock(Agent.class);
 			Model model = mock(Model.class);
-			ModelCallInput input = new ModelCallInput(List.of(new UserMessage("hello")), List.of(), null, model);
+			ToolSchema tool = ToolSchema.builder()
+				.name("execute_read_only_sql")
+				.description("Execute a read-only SQL statement")
+				.parameters(Map.of("type", "object", "properties",
+						Map.of("sql", Map.of("type", "string"))))
+				.build();
+			GenerateOptions options = GenerateOptions.builder()
+				.apiKey("must-not-be-recorded")
+				.baseUrl("https://private-llm.example")
+				.temperature(0.1)
+				.maxTokens(8000)
+				.parallelToolCalls(false)
+				.build();
+			ModelCallInput input = new ModelCallInput(List.of(new UserMessage("hello")), List.of(tool), options,
+					model);
 			try (Scope ignored = span.makeCurrent()) {
 				middleware
 					.onModelCall(agent, RuntimeContext.builder().build(), input,
@@ -97,8 +114,13 @@ class LangfuseObservabilityTest {
 			SpanData data = exporter.spans.get(0);
 			assertThat(data.getAttributes().get(AttributeKey.stringKey("langfuse.observation.type")))
 				.isEqualTo("generation");
-			assertThat(data.getAttributes().get(AttributeKey.stringKey("langfuse.observation.input")))
-				.contains("hello");
+			String generationInput = data.getAttributes()
+				.get(AttributeKey.stringKey("langfuse.observation.input"));
+			assertThat(generationInput).contains("\"messages\"", "hello", "\"tools\"",
+					"execute_read_only_sql", "\"options\"", "\"temperature\":0.1", "\"maxTokens\":8000",
+					"\"parallelToolCalls\":false")
+				.doesNotContain("must-not-be-recorded", "https://private-llm.example", "\"apiKey\"",
+						"\"baseUrl\"");
 			assertThat(data.getAttributes().get(AttributeKey.stringKey("langfuse.observation.output")))
 				.contains("answer");
 		}

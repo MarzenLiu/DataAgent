@@ -69,7 +69,7 @@
 
 ##### Docling 结构化解析
 
-启用 Docling 后，PDF 与 XLSX 会优先通过独立的 Docling Serve 解析；服务不可用时默认回退到 Tika。
+启用 Docling 后，PDF、DOCX 与 XLSX 会优先通过独立的 Docling Serve 解析；服务不可用时默认回退到 Tika。
 
 ```bash
 export DOCLING_ENABLED=true
@@ -78,8 +78,11 @@ export DOCLING_API_KEY=your-key
 ```
 
 - PDF：按阅读顺序映射正文，保留标题路径、页码、边界框、表格和图片描述；大型表格分块时会重复表头。
+- DOCX：按标题和正文阅读顺序映射，保留标题路径、表格和图片描述；正文使用配置的文本分块器，大型表格分块时重复表头。
 - XLSX：按工作表和表格映射，保留工作表名、表格序号及行区间；大型工作表按行分块并重复表头。
-- XLS 等旧版二进制格式不属于 Docling 的 XLSX 输入格式，会继续使用原有 Tika 链路。
+- DOC、XLS 等旧版二进制格式不属于 Docling Serve 的原生输入格式。其中 DOC 由 Tika 的 Apache POI HWPF 解析链路处理，并在解析元数据中标记为 `tika-poi-hwpf`；XLS 继续使用 Tika 链路。
+
+可通过 `DOCLING_WORD_TABLE_ROWS` 调整 DOCX 单个表格分块中的最大数据行数，默认值为 30。
 
 使用 `docker-file/docker-compose.yml` 启动完整环境时，Docling Serve 会自动启用。单独运行后端时，Docling 默认关闭，以保持原有部署兼容性。
 

@@ -116,6 +116,7 @@ export interface KnowledgeParsePreview {
 	status: string;
 	parser: string;
 	parserVersion: string;
+	splitterType?: string;
 	chunkCount: number;
 	warningCount: number;
 	reviewComment?: string;

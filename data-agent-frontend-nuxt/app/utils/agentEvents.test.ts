@@ -17,7 +17,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	agentResultText,
-	describeConfirmation,
+	formatSql,
+	looksLikeSql,
+	presentToolConfirmation,
 	visibleToolLabel,
 } from './agentEvents';
 
@@ -28,22 +30,55 @@ describe('AgentScope event presentation', () => {
 		expect(visibleToolLabel('future_tool')).toBeUndefined();
 	});
 
-	it('shows read-only SQL in the confirmation request', () => {
-		const text = describeConfirmation({
-			type: 'REQUIRE_USER_CONFIRM',
-			id: 'event-1',
-			createdAt: '2026-08-17T00:00:00Z',
-			toolCalls: [
-				{
-					id: 'tool-1',
-					name: 'execute_read_only_sql',
-					input: { sql: 'select count(*) from orders' },
-				},
-			],
+	it('renders read-only SQL without changing the generic tool-call shape', () => {
+		const presentation = presentToolConfirmation({
+			id: 'tool-1',
+			name: 'execute_read_only_sql',
+			input: { sql: 'select count(*) from orders', timeout: 30 },
 		});
 
-		expect(text).toContain('只读查询');
-		expect(text).toContain('select count(*) from orders');
+		expect(presentation.title).toBe('只读查询');
+		expect(presentation.details).toBe('SELECT count(*)\nFROM orders');
+		expect(presentation.id).toBe('tool-1');
+		expect(presentation.language).toBe('sql');
+	});
+
+	it('detects and formats SQL while preserving quoted text', () => {
+		const sql =
+			"select status, count(*) from orders where note = 'from users where active = 1' group by status order by status";
+
+		expect(looksLikeSql(sql)).toBe(true);
+		expect(formatSql(sql)).toBe(
+			"SELECT status, count(*)\nFROM orders\nWHERE note = 'from users where active = 1'\nGROUP BY status\nORDER BY status",
+		);
+	});
+
+	it('uses SQL rendering for a non-SQL tool when an argument is SQL', () => {
+		const presentation = presentToolConfirmation({
+			id: 'tool-3',
+			name: 'database_operation',
+			input: { statement: 'WITH recent AS (SELECT 1) SELECT * FROM recent' },
+		});
+
+		expect(presentation.title).toBe('SQL：database_operation');
+		expect(presentation.language).toBe('sql');
+		expect(presentation.details).toContain('\nSELECT *');
+	});
+
+	it('renders arbitrary tool properties as generic JSON', () => {
+		const presentation = presentToolConfirmation({
+			id: 'tool-2',
+			name: 'send_report',
+			input: {
+				recipients: ['ops@example.com'],
+				options: { format: 'csv' },
+			},
+		});
+
+		expect(presentation.title).toBe('工具调用：send_report');
+		expect(presentation.details).toContain('"recipients"');
+		expect(presentation.details).toContain('"format": "csv"');
+		expect(presentation.language).toBe('json');
 	});
 
 	it('extracts final text from the native AgentScope message blocks', () => {

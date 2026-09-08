@@ -14,6 +14,7 @@ permissions and * limitations under the License. */
 			<ChatMessageList />
 			<ChatInputArea />
 		</div>
+		<ChatDocumentPreview />
 	</div>
 </template>
 
@@ -24,9 +25,12 @@ import agentService from '~/services/agent/index';
 import ChatSidebar from '~/components/chat/ChatSidebar.vue';
 import ChatMessageList from '~/components/chat/ChatMessageList.vue';
 import ChatInputArea from '~/components/chat/ChatInputArea.vue';
+import ChatDocumentPreview from '~/components/chat/ChatDocumentPreview.vue';
+import { useDocumentPreview } from '~/composables/useDocumentPreview';
 
 const route = useRoute();
 const store = useChatStore();
+const documentPreview = useDocumentPreview();
 
 const currentAgentId = computed(() => {
 	const q = route.query.agentId;
@@ -65,17 +69,20 @@ watch(currentAgentId, async (newId, oldId) => {
 		store.currentMessages = [];
 		store.isStreaming = false;
 		store.toolActivities = [];
+		documentPreview.close();
 		await init(newId);
 	}
 });
 
 onUnmounted(() => {
 	store.disconnectSessionStream();
+	documentPreview.close();
 });
 </script>
 
 <style scoped>
 .chat-page {
+	position: relative;
 	display: flex;
 	height: calc(100vh - 64px);
 	overflow: hidden;

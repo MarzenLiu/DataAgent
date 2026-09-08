@@ -23,6 +23,7 @@ import graphService, {
 	type AgentStreamRequest,
 	type AgentStreamEvent,
 	type AgentToolActivity,
+	type AgentToolCall,
 	ConfirmationDecision,
 } from '~/services/graph/index';
 import agentDatasourceService from '~/services/agentDatasource/index';
@@ -34,11 +35,7 @@ import datasourceService, {
 	type Datasource as BaseDatasource,
 } from '~/services/datasource/index';
 import { resolveActiveDatasource } from '~/utils/datasourceSelection';
-import {
-	agentResultText,
-	describeConfirmation,
-	visibleToolLabel,
-} from '~/utils/agentEvents';
+import { agentResultText, visibleToolLabel } from '~/utils/agentEvents';
 
 export type Datasource = BaseDatasource & { isActive?: boolean };
 
@@ -67,7 +64,7 @@ export const useChatStore = defineStore('chat', () => {
 	// ── Human feedback state ────────────────────────────────────────────────────
 	const showHumanFeedback = ref(false);
 	const lastRequest = ref<AgentStreamRequest | null>(null);
-	const pendingConfirmationText = ref('');
+	const pendingConfirmations = ref<AgentToolCall[]>([]);
 
 	// ── Request options ─────────────────────────────────────────────────────────
 	const requestOptions = ref<ChatRequestOptions>({
@@ -341,7 +338,7 @@ export const useChatStore = defineStore('chat', () => {
 		lastRequest.value = request;
 		isStreaming.value = true;
 		toolActivities.value = [];
-		pendingConfirmationText.value = '';
+		pendingConfirmations.value = [];
 
 		sessionState.isStreaming = true;
 		sessionState.toolActivities = [];
@@ -444,7 +441,10 @@ export const useChatStore = defineStore('chat', () => {
 				}
 				if (event.type === 'REQUIRE_USER_CONFIRM') {
 					awaitingHumanFeedback = true;
-					pendingConfirmationText.value = describeConfirmation(event);
+					pendingConfirmations.value = (event.toolCalls || []).map((tool) => ({
+						...tool,
+						input: { ...(tool.input || {}) },
+					}));
 					return;
 				}
 				if (event.type === 'AGENT_RESULT') {
@@ -559,7 +559,7 @@ export const useChatStore = defineStore('chat', () => {
 	async function submitFeedback(decision: HitlDecision) {
 		if (!lastRequest.value) return;
 		showHumanFeedback.value = false;
-		pendingConfirmationText.value = '';
+		pendingConfirmations.value = [];
 		const confirmations = {
 			once: ConfirmationDecision.APPROVE_ONCE,
 			'tool-session': ConfirmationDecision.APPROVE_TOOL_FOR_SESSION,
@@ -593,7 +593,7 @@ export const useChatStore = defineStore('chat', () => {
 		toolActivities,
 		showHumanFeedback,
 		lastRequest,
-		pendingConfirmationText,
+		pendingConfirmations,
 		requestOptions,
 		reportFormat,
 		showReportFullscreen,

@@ -92,8 +92,8 @@ class GraphService {
 		const eventSource = new EventSource(
 			`${API_BASE_URL}/stream/search?${params.toString()}`,
 		);
-		let latestRunId = request.runId;
 		let finished = false;
+		let stopRequested = false;
 
 		async function fail(message: string) {
 			if (finished) return;
@@ -105,11 +105,6 @@ class GraphService {
 		eventSource.onmessage = async (message) => {
 			try {
 				const event = JSON.parse(message.data) as AgentStreamEvent;
-				latestRunId =
-					message.lastEventId ||
-					(event.name === 'run_started'
-						? String(event.value?.runId || '')
-						: latestRunId);
 				if (event.type === 'CUSTOM' && event.name === 'stream_error') {
 					await fail(
 						String(event.value?.message || 'Stream processing failed'),
@@ -120,9 +115,10 @@ class GraphService {
 					if (finished) return;
 					finished = true;
 					eventSource.close();
-					if (onComplete) await onComplete();
+					if (!stopRequested && onComplete) await onComplete();
 					return;
 				}
+				if (stopRequested) return;
 				await onEvent(event);
 			} catch (error) {
 				await fail(
@@ -134,23 +130,32 @@ class GraphService {
 		};
 
 		eventSource.onerror = async () => {
+			if (stopRequested) {
+				finished = true;
+				eventSource.close();
+				return;
+			}
 			if (!finished) await fail('Stream connection failed');
 		};
 
 		return async (cancelRun = false) => {
-			finished = true;
-			eventSource.close();
-			if (!cancelRun) return;
+			if (!cancelRun) {
+				finished = true;
+				eventSource.close();
+				return;
+			}
+			stopRequested = true;
 			const stopParams = new URLSearchParams({
 				conversationId: request.conversationId,
 			});
-			if (latestRunId) stopParams.append('runId', latestRunId);
 			const response = await fetch(
 				`${API_BASE_URL}/stream/stop?${stopParams.toString()}`,
 				{ method: 'POST', keepalive: true },
 			);
-			if (!response.ok)
+			if (!response.ok) {
+				stopRequested = false;
 				throw new Error(`Failed to stop agent run: HTTP ${response.status}`);
+			}
 		};
 	}
 }

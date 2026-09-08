@@ -64,7 +64,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			return;
 		}
 		for (RefItem child : group.getChildren()) {
-			Object item = resolve(context.document, child);
+			Object item = DoclingMappingSupport.resolveItem(context.document, child.getRef());
 			if (item instanceof GroupItem childGroup) {
 				traverseGroup(childGroup, context);
 			}
@@ -78,35 +78,6 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 				context.addPicture(pictureItem);
 			}
 		}
-	}
-
-	private Object resolve(DoclingDocument document, RefItem reference) {
-		if (reference == null || !StringUtils.hasText(reference.getRef())) {
-			return null;
-		}
-		String ref = reference.getRef();
-		try {
-			if (ref.startsWith("#/groups/")) {
-				return document.getGroups().get(index(ref, "#/groups/"));
-			}
-			if (ref.startsWith("#/texts/")) {
-				return document.getTexts().get(index(ref, "#/texts/"));
-			}
-			if (ref.startsWith("#/tables/")) {
-				return document.getTables().get(index(ref, "#/tables/"));
-			}
-			if (ref.startsWith("#/pictures/")) {
-				return document.getPictures().get(index(ref, "#/pictures/"));
-			}
-		}
-		catch (RuntimeException ignored) {
-			return null;
-		}
-		return null;
-	}
-
-	private int index(String reference, String prefix) {
-		return Integer.parseInt(reference.substring(prefix.length()));
 	}
 
 	private final class MappingContext {
@@ -177,7 +148,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			String sourceElementId = String.join(",", textElementIds);
 			Map<String, Object> metadata = DoclingMappingSupport.baseMetadata(document, sourceFilename, "text",
 					sourceElementId);
-			DoclingMappingSupport.addProvenance(metadata, textProvenance);
+			DoclingMappingSupport.addProvenance(metadata, document, textProvenance);
 			if (!textSectionPath.isEmpty()) {
 				metadata.put(DocumentMetadataConstant.SECTION_PATH, String.join(" > ", textSectionPath));
 			}
@@ -202,7 +173,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			}
 			int headerRows = DoclingMappingSupport.headerRowCount(rows);
 			int firstDataRow = Math.min(headerRows, rows.size());
-			int maxRows = Math.max(1, properties.getPdf().getMaxTableRowsPerChunk());
+			int maxRows = Math.max(1, maxTableRowsPerChunk(sourceFilename));
 			String caption = DoclingMappingSupport.captions(document, table.getCaptions());
 			if (firstDataRow >= rows.size()) {
 				addTableChunk(table, rows, headerRows, firstDataRow, firstDataRow, caption);
@@ -217,7 +188,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 				String caption) {
 				Map<String, Object> metadata = DoclingMappingSupport.baseMetadata(document, sourceFilename, "table",
 						table.getSelfRef());
-				DoclingMappingSupport.addProvenance(metadata, table.getProv());
+				DoclingMappingSupport.addProvenance(metadata, document, table.getProv());
 				if (!headings.isEmpty()) {
 					metadata.put(DocumentMetadataConstant.SECTION_PATH, String.join(" > ", headings));
 				}
@@ -248,7 +219,7 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			}
 			Map<String, Object> metadata = DoclingMappingSupport.baseMetadata(document, sourceFilename, "picture",
 					picture.getSelfRef());
-			DoclingMappingSupport.addProvenance(metadata, picture.getProv());
+			DoclingMappingSupport.addProvenance(metadata, document, picture.getProv());
 			if (!headings.isEmpty()) {
 				metadata.put(DocumentMetadataConstant.SECTION_PATH, String.join(" > ", headings));
 			}
@@ -260,6 +231,10 @@ public class PdfDoclingDocumentMapper implements DoclingDocumentMapper {
 			chunkIndex++;
 		}
 
+	}
+
+	protected int maxTableRowsPerChunk(String sourceFilename) {
+		return properties.getPdf().getMaxTableRowsPerChunk();
 	}
 
 }

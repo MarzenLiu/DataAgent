@@ -28,9 +28,15 @@ import io.agentscope.core.middleware.ActingInput;
 import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.middleware.ModelCallInput;
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.ToolChoice;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.reactor.v3_1.ContextPropagationOperator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -72,7 +78,7 @@ public class LangfuseAgentScopeMiddleware implements MiddlewareBase {
 			}
 			StringBuilder output = new StringBuilder();
 			span.setAttribute("langfuse.observation.type", "generation");
-			span.setAttribute("langfuse.observation.input", json(input.messages()));
+			span.setAttribute("langfuse.observation.input", json(modelRequestSnapshot(input)));
 			return next.apply(input).doOnNext(event -> {
 				if (event instanceof TextBlockDeltaEvent delta && delta.getDelta() != null) {
 					output.append(delta.getDelta());
@@ -103,6 +109,54 @@ public class LangfuseAgentScopeMiddleware implements MiddlewareBase {
 				}
 			});
 		});
+	}
+
+	private Map<String, Object> modelRequestSnapshot(ModelCallInput input) {
+		Map<String, Object> snapshot = new LinkedHashMap<>();
+		snapshot.put("messages", input.messages() != null ? input.messages() : List.of());
+		snapshot.put("tools", input.tools() != null ? input.tools() : List.of());
+		snapshot.put("options", safeOptions(input.options()));
+		return snapshot;
+	}
+
+	private Map<String, Object> safeOptions(GenerateOptions options) {
+		Map<String, Object> result = new LinkedHashMap<>();
+		if (options == null) {
+			return result;
+		}
+		putIfNotNull(result, "modelName", options.getModelName());
+		putIfNotNull(result, "stream", options.getStream());
+		putIfNotNull(result, "temperature", options.getTemperature());
+		putIfNotNull(result, "topP", options.getTopP());
+		putIfNotNull(result, "maxTokens", options.getMaxTokens());
+		putIfNotNull(result, "maxCompletionTokens", options.getMaxCompletionTokens());
+		putIfNotNull(result, "frequencyPenalty", options.getFrequencyPenalty());
+		putIfNotNull(result, "presencePenalty", options.getPresencePenalty());
+		putIfNotNull(result, "thinkingBudget", options.getThinkingBudget());
+		putIfNotNull(result, "reasoningEffort", options.getReasoningEffort());
+		putIfNotNull(result, "toolChoice", toolChoice(options.getToolChoice()));
+		putIfNotNull(result, "topK", options.getTopK());
+		putIfNotNull(result, "seed", options.getSeed());
+		putIfNotNull(result, "cacheControl", options.getCacheControl());
+		putIfNotNull(result, "parallelToolCalls", options.getParallelToolCalls());
+		putIfNotNull(result, "responseFormat", options.getResponseFormat());
+		return result;
+	}
+
+	private Object toolChoice(ToolChoice toolChoice) {
+		if (toolChoice == null) {
+			return null;
+		}
+		if (toolChoice instanceof ToolChoice.Specific specific) {
+			return Map.of("type", "specific", "toolName", specific.toolName());
+		}
+		return toolChoice.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+	}
+
+	private void putIfNotNull(Map<String, Object> values, String name, Object value) {
+		if (value != null) {
+			values.put(name, value);
+		}
 	}
 
 	private Span currentSpan(reactor.util.context.ContextView contextView) {

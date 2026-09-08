@@ -30,7 +30,7 @@ class GraphControllerTest {
 			}
 
 			@Override
-			public void stop(String conversationId, String runId) {
+			public void stop(String conversationId) {
 			}
 		};
 		WebTestClient client = WebTestClient.bindToController(new GraphController(service)).build();

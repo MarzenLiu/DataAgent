@@ -30,6 +30,7 @@ import org.springframework.core.io.ByteArrayResource;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -78,6 +79,16 @@ class AgentKnowledgeResourceManagerTest {
 		verify(doclingDocumentReader).read(resource, "report.pdf", "pdf", "token");
 		verify(agentVectorStoreService).replaceDocumentsByMetadata(anyMap(), argThat(documents -> documents.size() == 1
 				&& "structured pdf content".equals(documents.get(0).getText())));
+	}
+
+	@Test
+	void legacyDocUsesTikaPoiFallbackAndMarksParser() {
+		AgentKnowledge knowledge = new AgentKnowledge();
+		knowledge.setSourceFilename("水利规范.doc");
+		knowledge.setFileType("application/msword");
+
+		assertThat(AgentKnowledgeResourceManager.fallbackParser(knowledge)).isEqualTo("tika-poi-hwpf");
+		assertThat(AgentKnowledgeResourceManager.fallbackParserVersion(knowledge)).isEqualTo("poi-legacy-doc");
 	}
 
 	@Test

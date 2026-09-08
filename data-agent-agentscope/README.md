@@ -9,7 +9,8 @@ separate `data-agent-mcp-server` process.
 
 - `GET /api/stream/search` accepts `agentId`, `conversationId`, optional `runId`, `query`, `hitl`,
   optional `confirmation`, and `nl2sqlOnly`.
-- `POST /api/stream/stop` accepts `conversationId` and an optional `runId`.
+- `POST /api/stream/stop` accepts `conversationId` and uses AgentScope's session-scoped
+  `agent.interrupt(RuntimeContext)` API to cooperatively interrupt that conversation.
 - SSE data is an AgentScope `AgentEvent` JSON object. The service does not synthesize graph node
   names, steps, text types, or timeline blocks.
 - Application lifecycle signals use AgentScope `CustomEvent` with the names `run_started`,

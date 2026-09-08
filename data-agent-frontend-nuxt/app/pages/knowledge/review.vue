@@ -71,8 +71,7 @@
 			variant="tonal"
 			class="mb-4"
 		>
-			当前修订使用了纯文本降级解析器，页码、标题层级、表格和图片结构不可用。请确认
-			Docling 服务配置后重新上传文档。
+			{{ fallbackParserMessage(preview.parser) }}
 		</v-alert>
 
 		<div v-if="preview" class="review-grid">
@@ -81,6 +80,7 @@
 					<span>分块目录</span>
 					<div class="d-flex align-center ga-2">
 						<v-chip size="x-small" variant="tonal">{{ parserLabel(preview.parser) }}</v-chip>
+						<v-chip size="x-small" variant="tonal">{{ splitterLabel(preview.splitterType) }}</v-chip>
 						<v-chip size="x-small" variant="tonal">{{ preview.chunkCount }}</v-chip>
 					</div>
 				</v-card-title>
@@ -422,7 +422,27 @@ function qualityLabel(flag: string) {
 }
 
 function parserLabel(parser?: string) {
-	return parser === 'docling' ? `Docling ${preview.value?.parserVersion || ''}`.trim() : '纯文本降级';
+	if (parser === 'docling') return `Docling ${preview.value?.parserVersion || ''}`.trim();
+	if (parser === 'tika-poi-hwpf') return 'Tika/POI（DOC）';
+	return 'Tika 降级解析';
+}
+
+function fallbackParserMessage(parser?: string) {
+	if (parser === 'tika-poi-hwpf') {
+		return '当前文件是旧版 Word DOC，已使用 Tika/POI 解析。正文可用于检索，但标题层级、表格和图片结构可能不完整；如需 Docling 结构化解析，请另存为 DOCX 后重新上传。';
+	}
+	return '当前修订使用了 Tika 降级解析器，页码、标题层级、表格和图片结构可能不可用。请确认 Docling 服务配置后重新上传文档。';
+}
+
+function splitterLabel(splitter?: string) {
+	return {
+		'docling-hybrid': '混合分块',
+		token: '固定长度',
+		recursive: '固定长度（重叠）',
+		sentence: '句子分块',
+		paragraph: '段落分块',
+		semantic: '语义分块',
+	}[splitter || ''] || splitter || '未知策略';
 }
 
 function contentTypeLabel(type?: string) {

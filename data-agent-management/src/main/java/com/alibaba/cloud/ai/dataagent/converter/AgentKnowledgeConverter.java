@@ -77,10 +77,10 @@ public class AgentKnowledgeConverter {
 			knowledge.setFileType(createKnowledgeDto.getFile().getContentType());
 		}
 
-		// 设置分块策略类型，默认值为token
+		// Structured document parsing defaults to Docling's tokenizer-aware chunker.
 		String splitterType = createKnowledgeDto.getSplitterType();
 		if (splitterType == null || splitterType.isBlank()) {
-			splitterType = "token";
+			splitterType = "docling-hybrid";
 		}
 		knowledge.setSplitterType(splitterType);
 

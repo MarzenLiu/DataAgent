@@ -11,18 +11,16 @@ import io.agentscope.core.permission.PermissionMode;
 import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.harness.agent.HarnessAgent;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.function.BiConsumer;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 /** Applies request-scoped modes to one persistent AgentScope conversation session. */
 @Component
 public class AgentRuntimePolicy {
 
-	public static final String SESSION_BYPASS_MARKER = "__data_agent_session_bypass__";
+	private static final String TOOL_CONFIG_RULE_SOURCE = "agent-tool-config";
+
+	private static final String REQUEST_MODE_RULE_SOURCE = "request-mode";
 
 	private final DataAgentRegistryRepository repository;
 
@@ -35,60 +33,58 @@ public class AgentRuntimePolicy {
 			.orElseThrow(() -> new IllegalStateException("Agent configuration was not found for agent " + agentId));
 		AgentState state = agent.getDelegate().getAgentState(runtime);
 		PermissionContextState current = state.getPermissionContext();
-		Set<String> sessionAllowed = sessionRuleTools(current.getAllowRules());
-		Set<String> sessionDenied = sessionRuleTools(current.getDenyRules());
-		boolean sessionBypass = current.getMode() == PermissionMode.BYPASS
-				|| sessionAllowed.contains(SESSION_BYPASS_MARKER);
-
-		PermissionContextState.Builder builder = PermissionContextState.builder()
-			.mode(nl2sqlOnly ? PermissionMode.DEFAULT : sessionBypass ? PermissionMode.BYPASS : PermissionMode.DEFAULT);
-		current.getWorkingDirectories().forEach(builder::addWorkingDirectory);
-		copySessionRules(current.getAllowRules(), builder::addAllowRule);
-		copySessionRules(current.getDenyRules(), builder::addDenyRule);
-		copySessionRules(current.getAskRules(), builder::addAskRule);
-		if (sessionBypass && !sessionAllowed.contains(SESSION_BYPASS_MARKER)) {
-			builder.addAllowRule(SESSION_BYPASS_MARKER,
-					new PermissionRule(SESSION_BYPASS_MARKER, null, PermissionBehavior.ALLOW, "session"));
-		}
-		for (ToolConfiguration tool : configuration.tools()) {
-			applyToolPolicy(builder, tool, sessionAllowed, sessionDenied, hitl, nl2sqlOnly);
+		SessionRules sessionRules = SessionRules.from(current);
+		PermissionMode mode = !nl2sqlOnly && current.getMode() == PermissionMode.BYPASS ? PermissionMode.BYPASS
+				: PermissionMode.DEFAULT;
+		PermissionContextState.Builder builder = PermissionContextUpdates.sessionStateBuilder(current, mode);
+		if (mode != PermissionMode.BYPASS) {
+			for (ToolConfiguration tool : configuration.tools()) {
+				PermissionBehavior behavior = resolveBehavior(tool, sessionRules, hitl, nl2sqlOnly);
+				if (behavior != null) {
+					addRule(builder, tool.toolName(), behavior);
+				}
+			}
 		}
 		agent.getDelegate().replacePermissionContext(runtime.getUserId(), runtime.getSessionId(), builder.build());
 	}
 
-	private void applyToolPolicy(PermissionContextState.Builder builder, ToolConfiguration tool,
-			Set<String> sessionAllowed, Set<String> sessionDenied, boolean hitl, boolean nl2sqlOnly) {
+	private PermissionBehavior resolveBehavior(ToolConfiguration tool, SessionRules sessionRules, boolean hitl,
+			boolean nl2sqlOnly) {
 		if (nl2sqlOnly && !tool.availableInNl2sqlOnly()) {
-			builder.addDenyRule(tool.toolName(),
-					new PermissionRule(tool.toolName(), null, PermissionBehavior.DENY, "request-mode"));
-			return;
+			return PermissionBehavior.DENY;
 		}
-		if (sessionAllowed.contains(tool.toolName()) || sessionDenied.contains(tool.toolName())) {
-			return;
+		if (sessionRules.hasDecision(tool.toolName())) {
+			return null;
 		}
-		if (tool.approvalMode() == ApprovalMode.ALLOW || tool.approvalMode() == ApprovalMode.ASK_WHEN_HITL && !hitl) {
-			builder.addAllowRule(tool.toolName(),
-					new PermissionRule(tool.toolName(), null, PermissionBehavior.ALLOW, "agent-tool-config"));
+		if (tool.approvalMode() == ApprovalMode.ALLOW
+				|| tool.approvalMode() == ApprovalMode.ASK_WHEN_HITL && !hitl) {
+			return PermissionBehavior.ALLOW;
 		}
-		else {
-			builder.addAskRule(tool.toolName(),
-					new PermissionRule(tool.toolName(), null, PermissionBehavior.ASK, "agent-tool-config"));
+		return PermissionBehavior.ASK;
+	}
+
+	private void addRule(PermissionContextState.Builder builder, String toolName, PermissionBehavior behavior) {
+		String source = behavior == PermissionBehavior.DENY ? REQUEST_MODE_RULE_SOURCE : TOOL_CONFIG_RULE_SOURCE;
+		PermissionRule rule = new PermissionRule(toolName, null, behavior, source);
+		switch (behavior) {
+			case ALLOW -> builder.addAllowRule(toolName, rule);
+			case DENY -> builder.addDenyRule(toolName, rule);
+			case ASK -> builder.addAskRule(toolName, rule);
+			case PASSTHROUGH -> throw new IllegalArgumentException("PASSTHROUGH cannot be stored as a permission rule");
 		}
 	}
 
-	private Set<String> sessionRuleTools(Map<String, List<PermissionRule>> rules) {
-		return rules.entrySet()
-			.stream()
-			.filter(entry -> entry.getValue().stream().anyMatch(rule -> "session".equals(rule.source())))
-			.map(Map.Entry::getKey)
-			.collect(Collectors.toSet());
-	}
+	private record SessionRules(Set<String> allowedTools, Set<String> deniedTools) {
 
-	private void copySessionRules(Map<String, List<PermissionRule>> rules,
-			BiConsumer<String, PermissionRule> consumer) {
-		rules.forEach((toolName, values) -> values.stream()
-			.filter(rule -> "session".equals(rule.source()))
-			.forEach(rule -> consumer.accept(toolName, rule)));
+		static SessionRules from(PermissionContextState context) {
+			return new SessionRules(PermissionContextUpdates.sessionRuleTools(context.getAllowRules()),
+					PermissionContextUpdates.sessionRuleTools(context.getDenyRules()));
+		}
+
+		boolean hasDecision(String toolName) {
+			return allowedTools.contains(toolName) || deniedTools.contains(toolName);
+		}
+
 	}
 
 }

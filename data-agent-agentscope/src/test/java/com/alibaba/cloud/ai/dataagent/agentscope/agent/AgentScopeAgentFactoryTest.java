@@ -117,6 +117,12 @@ class AgentScopeAgentFactoryTest {
 		assertThat(permissionContext.getAskRules()).containsKey("execute_read_only_sql");
 		assertThat(permissionContext.getAllowRules()).containsOnlyKeys("inspect_data_source", "search_knowledge_base");
 
+		agent.getDelegate().setPermissionMode(runtime, io.agentscope.core.permission.PermissionMode.BYPASS);
+		runtimePolicy.apply(7L, agent, runtime, false, false);
+		assertThat(agent.getDelegate().getPermissionMode(runtime.getUserId(), runtime.getSessionId()))
+			.isEqualTo(io.agentscope.core.permission.PermissionMode.BYPASS);
+		assertThat(agent.getDelegate().getAgentState(runtime).getPermissionContext().getAskRules()).isEmpty();
+
 		runtimePolicy.apply(7L, agent, runtime, false, true);
 		var nl2sqlPermissions = agent.getDelegate().getAgentState(runtime).getPermissionContext();
 		assertThat(nl2sqlPermissions.getDenyRules()).containsKey("execute_read_only_sql");

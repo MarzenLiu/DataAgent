@@ -60,6 +60,12 @@ public final class DocumentMetadataConstant {
 
 	public static final String BOUNDING_BOX = "boundingBox";
 
+	public static final String COORDINATE_ORIGIN = "coordinateOrigin";
+
+	public static final String PAGE_WIDTH = "pageWidth";
+
+	public static final String PAGE_HEIGHT = "pageHeight";
+
 	public static final String SECTION_PATH = "sectionPath";
 
 	public static final String SHEET_NAME = "sheetName";

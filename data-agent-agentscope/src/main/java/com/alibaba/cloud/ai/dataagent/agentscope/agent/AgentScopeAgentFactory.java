@@ -58,6 +58,12 @@ import org.springframework.util.StringUtils;
 @Component
 public class AgentScopeAgentFactory {
 
+	private static final String KNOWLEDGE_CITATION_PROMPT = """
+
+			知识库引用规则：search_knowledge_base 返回的内容只是候选资料。仅当最终回答中的事实确实使用了某条匹配内容时，
+			在该事实后添加 [[cite:实际citationId值]]。不要标记未使用的候选，不要编造 citationId，也不要解释该标记。
+			""";
+
 	private final DataAgentRegistryRepository repository;
 
 	private final AgentScopeDataAgentProperties properties;
@@ -138,7 +144,8 @@ public class AgentScopeAgentFactory {
 			.name("configured_agent")
 			.agentId("data-agent-%d".formatted(agentId))
 			.description(value(configuration.description()))
-			.sysPrompt(configuration.prompt().trim())
+			.sysPrompt(configuration.prompt().trim()
+					+ (enabledTools.contains("search_knowledge_base") ? KNOWLEDGE_CITATION_PROMPT : ""))
 			.model(createModel(settings))
 			.toolkit(toolkit)
 			.workspace(workspace)

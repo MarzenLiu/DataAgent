@@ -7,7 +7,8 @@ INSERT INTO agent (id, name, description, avatar, status, api_key, api_key_enabl
 (2, '销售数据分析智能体', '专注于销售数据分析和业务指标计算的智能体', NULL, 'draft', NULL, 0, '你是一个严谨的销售数据分析智能体。使用 search_knowledge_base、inspect_data_source 和 execute_read_only_sql，必须基于真实数据，禁止写操作和DDL。MODE为NL2SQL_ONLY时只返回SQL。', '业务分析', 2100246635, '销售分析,业务指标,客户分析', NOW(), NOW()),
 (3, '财务报表智能体', '专门处理财务数据和报表分析的智能体', NULL, 'draft', NULL, 0, '你是一个严谨的财务数据分析智能体。使用知识库和真实数据核实口径，不得臆造财务数据，只允许只读查询。MODE为NL2SQL_ONLY时只返回SQL。', '财务分析', 2100246635, '财务数据,报表分析,会计', NOW(), NOW()),
 (4, '库存管理智能体', '专注于库存数据管理和供应链分析的智能体', NULL, 'draft', NULL, 0, '你是一个严谨的库存和供应链数据分析智能体。必须以真实数据为准，不得编造入出库、仓库或供应商数据，只允许只读查询。MODE为NL2SQL_ONLY时只返回SQL。', '供应链', 2100246635, '库存管理,供应链,物流', NOW(), NOW()),
-(5, '商品购买智能体', '查询实时商品、价格和库存，并在用户确认后安全下单', NULL, 'published', NULL, 0, '你是一个谨慎的商品购买助手，只能使用 search_products 和 place_order。不得编造商品、价格、库存或订单。下单前必须确认 userId、productId、quantity 和明确购买意图；place_order 报错后不得再次调用。成功后告知订单详情，失败时明确告知事务已回滚。', '购物下单', 2100246635, '商品查询,下单,购物助手', NOW(), NOW())
+(5, '商品购买智能体', '查询实时商品、价格和库存，并在用户确认后安全下单', NULL, 'published', NULL, 0, '你是一个谨慎的商品购买助手，只能使用 search_products 和 place_order。不得编造商品、价格、库存或订单。下单前必须确认 userId、productId、quantity 和明确购买意图；place_order 报错后不得再次调用。成功后告知订单详情，失败时明确告知事务已回滚。', '购物下单', 2100246635, '商品查询,下单,购物助手', NOW(), NOW()),
+(6, '水利工程知识问答智能体', '面向水利水电工程规划、设计、施工、验收与运行管理的规范和论文知识库问答', NULL, 'published', NULL, 0, '你是严谨的水利工程知识库问答智能体。回答前必须调用 search_knowledge_base，只能依据召回资料回答并标注来源。不得编造标准号、条文、参数或工程结论；标准冲突时优先现行官方版本，具体工程安全问题必须提示专业复核。', '水利工程', 2100246635, '水利工程,水工建筑物,行业规范,论文问答', NOW(), NOW())
 ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), avatar=VALUES(avatar), prompt=VALUES(prompt), category=VALUES(category), tags=VALUES(tags);
 
 INSERT INTO agent_tool (agent_id, tool_name, approval_mode, inject_agent_id, available_in_nl2sql_only, is_enabled, sort_order) VALUES
@@ -15,7 +16,8 @@ INSERT INTO agent_tool (agent_id, tool_name, approval_mode, inject_agent_id, ava
 (2, 'search_knowledge_base', 'ALLOW', 1, 1, 1, 10), (2, 'inspect_data_source', 'ALLOW', 1, 1, 1, 20), (2, 'execute_read_only_sql', 'ASK_WHEN_HITL', 1, 0, 1, 30),
 (3, 'search_knowledge_base', 'ALLOW', 1, 1, 1, 10), (3, 'inspect_data_source', 'ALLOW', 1, 1, 1, 20), (3, 'execute_read_only_sql', 'ASK_WHEN_HITL', 1, 0, 1, 30),
 (4, 'search_knowledge_base', 'ALLOW', 1, 1, 1, 10), (4, 'inspect_data_source', 'ALLOW', 1, 1, 1, 20), (4, 'execute_read_only_sql', 'ASK_WHEN_HITL', 1, 0, 1, 30),
-(5, 'search_products', 'ALLOW', 1, 1, 1, 10), (5, 'place_order', 'ALWAYS_ASK', 1, 0, 1, 20)
+(5, 'search_products', 'ALLOW', 1, 1, 1, 10), (5, 'place_order', 'ALWAYS_ASK', 1, 0, 1, 20),
+(6, 'search_knowledge_base', 'ALLOW', 1, 1, 1, 10)
 ON DUPLICATE KEY UPDATE approval_mode=VALUES(approval_mode), inject_agent_id=VALUES(inject_agent_id), available_in_nl2sql_only=VALUES(available_in_nl2sql_only), is_enabled=VALUES(is_enabled), sort_order=VALUES(sort_order);
 
 INSERT INTO harness_skill (skill_name, description, content, is_enabled) VALUES
@@ -24,14 +26,21 @@ INSERT INTO harness_skill (skill_name, description, content, is_enabled) VALUES
 1. 确认查询结果的时间范围、过滤条件和分组粒度与用户问题一致。
 2. 检查空值、重复行、异常值以及合计与明细是否一致。
 3. 区分数据库返回的事实、基于事实的计算和无法验证的推断。
-4. 发现口径冲突或数据不足时明确说明，不要补造结果。', 1)
+4. 发现口径冲突或数据不足时明确说明，不要补造结果。', 1),
+('water-conservancy-qa-sop', '水利工程规范与论文知识问答的来源核验和回答流程。', '# 水利工程知识问答流程
+
+1. 先检索知识库并核验题名、标准号、版本和日期。
+2. 优先采用现行官方标准，具体条文必须有原文支持。
+3. 输出结论、依据、适用范围与限制、来源。
+4. 具体工程安全问题提示由专业人员复核。', 1)
 ON DUPLICATE KEY UPDATE description=VALUES(description), content=VALUES(content), is_enabled=VALUES(is_enabled);
 
 INSERT INTO agent_skill (agent_id, skill_name, is_enabled, sort_order) VALUES
 (1, 'data-analysis-sop', 1, 10), (1, 'result-validation-sop', 1, 20),
 (2, 'data-analysis-sop', 1, 10), (2, 'result-validation-sop', 1, 20),
 (3, 'data-analysis-sop', 1, 10), (3, 'result-validation-sop', 1, 20),
-(4, 'data-analysis-sop', 1, 10), (4, 'result-validation-sop', 1, 20)
+(4, 'data-analysis-sop', 1, 10), (4, 'result-validation-sop', 1, 20),
+(6, 'water-conservancy-qa-sop', 1, 10)
 ON DUPLICATE KEY UPDATE is_enabled=VALUES(is_enabled), sort_order=VALUES(sort_order);
 
 -- 数据源示例数据（必须先插入，因为其他表依赖它）
@@ -64,7 +73,11 @@ INSERT INTO agent_knowledge (id, agent_id, title, content, type, is_recall, embe
 (4, 2, '销售数据字段说明', '销售分析以真实 orders 字段为准：order_date、total_amount、status、user_id。商品维度通过 order_items 连接 products。', 'QA', 1, 'PENDING', 'text', '销售分析使用哪些真实字段？', NOW(), NOW()),
 (5, 2, '客户分析指标体系', '客户价值可按已完成订单金额、订单数和最近下单时间分析，使用 orders.user_id 关联 users.id。', 'FAQ', 1, 'PENDING', 'text', '如何基于订单分析客户价值？', NOW(), NOW()),
 (6, 3, '财务报表能力边界', '当前示例数据没有会计科目、凭证和现金流表，不能生成可靠财务报表；应先绑定包含财务数据的数据源。', 'FAQ', 1, 'PENDING', 'text', '当前示例库能否生成财务报表？', NOW(), NOW()),
-(7, 4, '库存分析能力边界', '当前示例库可使用 products.stock 查看商品库存，但没有入库、出库、仓库和供应商流水，无法完成完整供应链分析。', 'FAQ', 1, 'PENDING', 'text', '当前示例库支持哪些库存分析？', NOW(), NOW())
+(7, 4, '库存分析能力边界', '当前示例库可使用 products.stock 查看商品库存，但没有入库、出库、仓库和供应商流水，无法完成完整供应链分析。', 'FAQ', 1, 'PENDING', 'text', '当前示例库支持哪些库存分析？', NOW(), NOW()),
+(8, 6, '水利规范引用原则', '优先引用全国标准信息公共服务平台和水利部等官方来源，明确标准号与版本；没有召回标准正文时不得编造具体条文。', 'QA', 1, 'PENDING', 'text', '回答水利工程规范问题时如何选择和引用依据？', NOW(), NOW()),
+(9, 6, 'SL 252—2017基本信息', 'SL 252—2017《水利水电工程等级划分及洪水标准》于2017年4月9日实施并代替SL 252—2000；具体工程参数应核对正式标准全文。', 'QA', 1, 'PENDING', 'text', 'SL 252—2017是什么标准？', NOW(), NOW()),
+(10, 6, 'SL/T 223—2025版本信息', 'SL/T 223—2025《水利水电建设工程验收规程》于2025年6月14日实施，代替SL 223—2008和SL 176—2007。', 'QA', 1, 'PENDING', 'text', '水利水电建设工程验收规程应关注哪个版本？', NOW(), NOW()),
+(11, 6, '具体工程问答边界', '知识库问答不能替代项目勘察、设计复核或安全鉴定。坝体渗流、边坡稳定等具体工程问题必须结合监测数据和现行规范由专业人员判断。', 'FAQ', 1, 'PENDING', 'text', '能否仅凭知识库确定某座大坝是否安全？', NOW(), NOW())
 ON DUPLICATE KEY UPDATE title=VALUES(title), content=VALUES(content), type=VALUES(type), file_type=VALUES(file_type), question=VALUES(question);
 
 -- 智能体数据源关联示例数据（依赖 agent 和 datasource）

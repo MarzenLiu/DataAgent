@@ -15,44 +15,51 @@
  */
 package com.alibaba.cloud.ai.dataagent.agentscope.service;
 
-import static com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentRuntimePolicy.SESSION_BYPASS_MARKER;
 import static com.alibaba.cloud.ai.dataagent.agentscope.constant.DataAgentRuntimeConstants.GLOBAL_USER_ID;
 
 import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentRuntimePolicy;
 import com.alibaba.cloud.ai.dataagent.agentscope.agent.AgentScopeAgentFactory;
+import com.alibaba.cloud.ai.dataagent.agentscope.agent.PermissionContextUpdates;
 import com.alibaba.cloud.ai.dataagent.agentscope.api.AgentStreamRequest;
 import com.alibaba.cloud.ai.dataagent.agentscope.api.ConfirmationDecision;
 import com.alibaba.cloud.ai.dataagent.agentscope.observability.LangfuseTraceService;
 import com.alibaba.cloud.ai.dataagent.agentscope.repository.DataAgentRegistryRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.AgentEventType;
 import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.event.CustomEvent;
 import io.agentscope.core.event.RequireUserConfirmEvent;
+import io.agentscope.core.event.ToolResultTextDeltaEvent;
+import io.agentscope.core.message.GenerateReason;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
+import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolCallState;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.message.UserMessage;
-import io.agentscope.core.permission.PermissionBehavior;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
-import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.harness.agent.HarnessAgent;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 @Service
@@ -72,17 +79,13 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 
 	private final DataAgentRegistryRepository repository;
 
-	private final ActiveRunRegistry runRegistry;
-
 	private final LangfuseTraceService langfuseTraceService;
 
 	public AgentScopeSearchServiceImpl(AgentScopeAgentFactory agentFactory, AgentRuntimePolicy runtimePolicy,
-			DataAgentRegistryRepository repository, ActiveRunRegistry runRegistry,
-			LangfuseTraceService langfuseTraceService) {
+			DataAgentRegistryRepository repository, LangfuseTraceService langfuseTraceService) {
 		this.agentFactory = agentFactory;
 		this.runtimePolicy = runtimePolicy;
 		this.repository = repository;
-		this.runRegistry = runRegistry;
 		this.langfuseTraceService = langfuseTraceService;
 	}
 
@@ -100,21 +103,23 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 					conversationId, runId, ex);
 			return errorFlux(agentId, runId, ex);
 		}
-		Mono<Void> cancelSignal = runRegistry.register(context.runId(), context.conversationId());
 		Flux<ServerSentEvent<AgentEvent>> stream = Flux.defer(() -> executionStream(context))
 			.subscribeOn(Schedulers.boundedElastic())
 			.doOnError(ex -> LOGGER.error("AgentScope stream failed, agentId={}, conversationId={}, runId={}",
 					context.agentIdText(), context.conversationId(), context.runId(), ex))
 			.onErrorResume(ex -> errorFlux(context.agentIdText(), context.runId(), ex));
-		Flux<ServerSentEvent<AgentEvent>> cancellable = stream.takeUntilOther(cancelSignal)
-			.doFinally(signal -> runRegistry.remove(context.runId()));
 		return langfuseTraceService.trace(request, context.agentIdText(), context.conversationId(), context.runId(),
-				context.hitl(), cancellable);
+				context.hitl(), stream);
 	}
 
 	@Override
-	public void stop(String conversationId, String runId) {
-		runRegistry.stop(conversationId, runId);
+	public void stop(String conversationId) {
+		if (!StringUtils.hasText(conversationId)) {
+			return;
+		}
+		repository.findConversationAgentId(conversationId).ifPresent(agentId -> agentFactory.get(agentId)
+			.getDelegate()
+			.interrupt(runtimeContext(conversationId)));
 	}
 
 	private Flux<ServerSentEvent<AgentEvent>> executionStream(RequestContext context) {
@@ -136,15 +141,24 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 
 	private Flux<ServerSentEvent<AgentEvent>> streamAgent(HarnessAgent agent, Msg input, RuntimeContext runtime,
 			RequestContext context, ExecutionState state) {
-		return agent.streamEvents(input, runtime).doOnNext(state::observe).map(event -> sse(context, event));
+		return agent.streamEvents(input, runtime)
+			.map(state::observe)
+			.filter(AgentScopeSearchServiceImpl::isClientVisibleEvent)
+			.map(event -> sse(context, event));
+	}
+
+	static boolean isClientVisibleEvent(AgentEvent event) {
+		return event.getType() != AgentEventType.THINKING_BLOCK_DELTA;
 	}
 
 	private Flux<ServerSentEvent<AgentEvent>> completeExecution(RequestContext context, ExecutionState state) {
-		if (!state.paused() && !context.nl2sqlOnly() && StringUtils.hasText(state.finalResult())) {
+		if (!state.paused() && !state.interrupted() && !context.nl2sqlOnly()
+				&& StringUtils.hasText(state.finalResult())) {
 			repository.saveReport(context.conversationId(), context.agentId(), context.query(), state.finalResult());
 		}
 		return Flux.just(sse(context,
-				new CustomEvent(STREAM_COMPLETED, Map.of("runId", context.runId(), "paused", state.paused()))));
+				new CustomEvent(STREAM_COMPLETED, Map.of("runId", context.runId(), "paused", state.paused(),
+						"interrupted", state.interrupted()))));
 	}
 
 	private ServerSentEvent<AgentEvent> sse(RequestContext context, AgentEvent event) {
@@ -157,7 +171,11 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 	}
 
 	private RuntimeContext runtimeContext(RequestContext context) {
-		return RuntimeContext.builder().sessionId(context.conversationId()).userId(GLOBAL_USER_ID).build();
+		return runtimeContext(context.conversationId());
+	}
+
+	private RuntimeContext runtimeContext(String conversationId) {
+		return RuntimeContext.builder().sessionId(conversationId).userId(GLOBAL_USER_ID).build();
 	}
 
 	private RequestContext normalize(AgentStreamRequest request) {
@@ -205,12 +223,10 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 			throw new IllegalStateException("No pending AgentScope HITL operation was found for this conversation");
 		}
 		boolean approved = context.confirmation() != ConfirmationDecision.REJECT;
-		if (approved && context.approvalScope() != ApprovalScope.ONCE) {
+		if (approved) {
 			applySessionApproval(agent, runtime, pendingTools, context.approvalScope());
 		}
-		List<ConfirmResult> results = pendingTools.stream()
-			.map(tool -> confirmResult(approved, tool, context.approvalScope()))
-			.toList();
+		List<ConfirmResult> results = pendingTools.stream().map(tool -> new ConfirmResult(approved, tool)).toList();
 		Map<String, Object> metadata = new HashMap<>();
 		metadata.put(Msg.METADATA_CONFIRM_RESULTS, results);
 		return Msg.builder()
@@ -221,40 +237,29 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 			.build();
 	}
 
-	private ConfirmResult confirmResult(boolean approved, ToolUseBlock tool, ApprovalScope approvalScope) {
-		if (!approved || approvalScope != ApprovalScope.TOOL_FOR_SESSION) {
-			return new ConfirmResult(approved, tool);
-		}
-		PermissionRule sessionRule = new PermissionRule(tool.getName(), null, PermissionBehavior.ALLOW, "session");
-		return new ConfirmResult(true, tool, List.of(sessionRule));
-	}
-
 	private void applySessionApproval(HarnessAgent agent, RuntimeContext runtime, List<ToolUseBlock> pendingTools,
 			ApprovalScope approvalScope) {
-		AgentState state = agent.getDelegate().getAgentState(runtime);
-		PermissionContextState current = state.getPermissionContext();
-		PermissionContextState.Builder builder = PermissionContextState.builder()
-			.mode(approvalScope == ApprovalScope.ALL_FOR_SESSION ? PermissionMode.BYPASS : current.getMode());
-		current.getWorkingDirectories().forEach(builder::addWorkingDirectory);
-		current.getAllowRules()
-			.forEach((toolName, rules) -> rules.forEach(rule -> builder.addAllowRule(toolName, rule)));
-		current.getDenyRules().forEach((toolName, rules) -> rules.forEach(rule -> builder.addDenyRule(toolName, rule)));
-		if (approvalScope == ApprovalScope.TOOL_FOR_SESSION) {
-			List<String> approvedTools = pendingTools.stream().map(ToolUseBlock::getName).distinct().toList();
-			current.getAskRules().forEach((toolName, rules) -> {
-				if (!approvedTools.contains(toolName)) {
-					rules.forEach(rule -> builder.addAskRule(toolName, rule));
-				}
-			});
-			for (String toolName : approvedTools) {
-				builder.addAllowRule(toolName, new PermissionRule(toolName, null, PermissionBehavior.ALLOW, "session"));
-			}
+		if (approvalScope == ApprovalScope.ONCE) {
+			return;
 		}
 		if (approvalScope == ApprovalScope.ALL_FOR_SESSION) {
-			builder.addAllowRule(SESSION_BYPASS_MARKER,
-					new PermissionRule(SESSION_BYPASS_MARKER, null, PermissionBehavior.ALLOW, "session"));
+			AgentState state = agent.getDelegate().getAgentState(runtime);
+			PermissionContextState bypass = PermissionContextUpdates
+				.sessionStateBuilder(state.getPermissionContext(), PermissionMode.BYPASS)
+				.build();
+			agent.getDelegate()
+				.replacePermissionContext(runtime.getUserId(), runtime.getSessionId(), bypass);
+			return;
 		}
-		agent.getDelegate().replacePermissionContext(runtime.getUserId(), runtime.getSessionId(), builder.build());
+		allowToolsForSession(agent, runtime, pendingTools);
+	}
+
+	private void allowToolsForSession(HarnessAgent agent, RuntimeContext runtime, List<ToolUseBlock> pendingTools) {
+		AgentState state = agent.getDelegate().getAgentState(runtime);
+		List<String> approvedTools = pendingTools.stream().map(ToolUseBlock::getName).distinct().toList();
+		PermissionContextState updated = PermissionContextUpdates.allowToolsForSession(state.getPermissionContext(),
+				approvedTools);
+		agent.getDelegate().replacePermissionContext(runtime.getUserId(), runtime.getSessionId(), updated);
 	}
 
 	private List<ToolUseBlock> pendingTools(HarnessAgent agent, RuntimeContext runtime) {
@@ -291,19 +296,103 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 		return StringUtils.hasText(current.getMessage()) ? current.getMessage() : current.getClass().getSimpleName();
 	}
 
-	private static final class ExecutionState {
+	static final class ExecutionState {
+
+		private static final String KNOWLEDGE_SEARCH_TOOL = "search_knowledge_base";
+
+		private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+		private static final Pattern CITATION_MARKER_PATTERN = Pattern.compile("[ \\t]*\\[\\[cite:([^]\\r\\n]+)]]");
 
 		private String finalResult = "";
 
+		private final Map<String, StringBuilder> knowledgeResults = new LinkedHashMap<>();
+
 		private boolean paused;
 
-		void observe(AgentEvent event) {
+		private boolean interrupted;
+
+		AgentEvent observe(AgentEvent event) {
 			if (event instanceof RequireUserConfirmEvent) {
 				paused = true;
 			}
-			if (event instanceof AgentResultEvent resultEvent && resultEvent.getResult() != null) {
-				finalResult = resultEvent.getResult().getTextContent();
+			if (event instanceof ToolResultTextDeltaEvent toolResult
+					&& KNOWLEDGE_SEARCH_TOOL.equals(toolResult.getToolCallName())) {
+				knowledgeResults.computeIfAbsent(toolResult.getToolCallId(), ignored -> new StringBuilder())
+					.append(toolResult.getDelta());
 			}
+			if (event instanceof AgentResultEvent resultEvent && resultEvent.getResult() != null) {
+				String answer = appendCitations(resultEvent.getResult().getTextContent());
+				Msg decoratedResult = resultEvent.getResult()
+					.withContent(List.of(TextBlock.builder().text(answer).build()));
+				AgentResultEvent decoratedEvent = new AgentResultEvent(event.getId(), event.getCreatedAt(), decoratedResult);
+				decoratedEvent.withSource(event.getSource()).withMetadata(event.getMetadata());
+				finalResult = answer;
+				interrupted = resultEvent.getResult().getGenerateReason() == GenerateReason.INTERRUPTED;
+				return decoratedEvent;
+			}
+			return event;
+		}
+
+		private String appendCitations(String answer) {
+			Map<String, DocumentCitation> candidates = new LinkedHashMap<>();
+			for (StringBuilder result : knowledgeResults.values()) {
+				for (DocumentCitation citation : parseCitations(result.toString())) {
+					candidates.putIfAbsent(citation.citationId(), citation);
+				}
+			}
+			String rawAnswer = answer == null ? "" : answer;
+			Matcher markerMatcher = CITATION_MARKER_PATTERN.matcher(rawAnswer);
+			Set<DocumentCitation> citations = new LinkedHashSet<>();
+			StringBuilder cleanedAnswer = new StringBuilder();
+			while (markerMatcher.find()) {
+				DocumentCitation citation = candidates.get(markerMatcher.group(1).trim());
+				if (citation != null) citations.add(citation);
+				markerMatcher.appendReplacement(cleanedAnswer, "");
+			}
+			markerMatcher.appendTail(cleanedAnswer);
+			String cleaned = cleanedAnswer.toString().stripTrailing();
+			if (citations.isEmpty()) return cleaned;
+			StringBuilder decorated = new StringBuilder(cleaned);
+			decorated.append("\n\n### 参考文档\n");
+			for (DocumentCitation citation : citations) {
+				decorated.append("- [")
+					.append(escapeMarkdownLabel(citation.filename()))
+					.append(" · 第")
+					.append(citation.pageNumber())
+					.append("页](")
+					.append(citation.url())
+					.append(")\n");
+			}
+			return decorated.toString().stripTrailing();
+		}
+
+		private List<DocumentCitation> parseCitations(String toolResult) {
+			try {
+				JsonNode matches = OBJECT_MAPPER.readTree(toolResult).path("matches");
+				if (!matches.isArray()) return List.of();
+				List<DocumentCitation> citations = new java.util.ArrayList<>();
+				for (JsonNode match : matches) {
+					JsonNode citation = match.path("citation");
+					String citationId = citation.path("citationId").asText("");
+					int knowledgeId = citation.path("knowledgeId").asInt(0);
+					int pageNumber = citation.path("pageNumber").asInt(0);
+					String filename = citation.path("filename").asText("");
+					String url = citation.path("url").asText("");
+					if (StringUtils.hasText(citationId) && knowledgeId > 0 && pageNumber > 0 && StringUtils.hasText(filename)
+							&& StringUtils.hasText(url)) {
+						citations.add(new DocumentCitation(citationId, knowledgeId, filename, pageNumber, url));
+					}
+				}
+				return citations;
+			}
+			catch (Exception ignored) {
+				return List.of();
+			}
+		}
+
+		private String escapeMarkdownLabel(String value) {
+			return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]");
 		}
 
 		String finalResult() {
@@ -313,6 +402,12 @@ public class AgentScopeSearchServiceImpl implements AgentScopeSearchService {
 		boolean paused() {
 			return paused;
 		}
+
+		boolean interrupted() {
+			return interrupted;
+		}
+
+		private record DocumentCitation(String citationId, int knowledgeId, String filename, int pageNumber, String url) { }
 
 	}
 

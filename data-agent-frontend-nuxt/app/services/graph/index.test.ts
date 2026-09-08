@@ -46,6 +46,50 @@ class FakeEventSource {
 describe('AgentScope stream service', () => {
 	beforeEach(() => {
 		vi.stubGlobal('EventSource', FakeEventSource);
+		vi.stubGlobal('fetch', vi.fn());
+	});
+
+	it('requests a native interrupt and keeps SSE subscribed until AgentScope completes', async () => {
+		const onEvent = vi.fn(async () => {});
+		const onComplete = vi.fn(async () => {});
+		vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }));
+		const closeStream = await graphService.streamSearch(
+			{
+				agentId: '7',
+				conversationId: 'conversation-1',
+				query: 'revenue',
+				hitl: false,
+				nl2sqlOnly: false,
+			},
+			onEvent,
+			undefined,
+			onComplete,
+		);
+
+		await closeStream(true);
+
+		expect(fetch).toHaveBeenCalledWith(
+			'/api/stream/stop?conversationId=conversation-1',
+			{ method: 'POST', keepalive: true },
+		);
+		expect(FakeEventSource.latest.closed).toBe(false);
+
+		await FakeEventSource.latest.emit({
+			type: 'AGENT_RESULT',
+			id: 'event-1',
+			createdAt: '2026-09-04T00:00:00Z',
+		});
+		await FakeEventSource.latest.emit({
+			type: 'CUSTOM',
+			id: 'event-2',
+			createdAt: '2026-09-04T00:00:01Z',
+			name: 'stream_completed',
+			value: { runId: 'run-1' },
+		});
+
+		expect(onEvent).not.toHaveBeenCalled();
+		expect(onComplete).not.toHaveBeenCalled();
+		expect(FakeEventSource.latest.closed).toBe(true);
 	});
 
 	it('sends the new confirmation contract without legacy graph parameters', async () => {

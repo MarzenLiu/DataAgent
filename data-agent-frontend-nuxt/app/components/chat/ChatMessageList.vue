@@ -8,7 +8,11 @@ either express or implied. * See the License for the specific language governing
 permissions and * limitations under the License. */
 
 <template>
-	<div ref="listRef" class="message-list custom-scrollbar">
+	<div
+		ref="listRef"
+		class="message-list custom-scrollbar"
+		@click="handleMessageClick"
+	>
 		<!-- Welcome state when no session -->
 		<ChatWelcome v-if="!store.currentSession" />
 
@@ -181,6 +185,8 @@ import DOMPurify from 'dompurify';
 import { renderMarkdownContent } from '~/utils/markdown';
 import { useEchartsRenderer } from '~/composables/useEchartsRenderer';
 import { useChatStore } from '~/stores/chat';
+import { useDocumentPreview } from '~/composables/useDocumentPreview';
+import { parseDocumentCitationUrl } from '~/utils/documentCitation';
 import type { ResultData } from '~/services/resultSet/index';
 import type { ChatMessage } from '~/services/chat/index';
 import ChatWelcome from './ChatWelcome.vue';
@@ -189,6 +195,7 @@ import ChatMarkdownReport from './ChatMarkdownReport.vue';
 import ChatStreamingReport from './ChatStreamingReport.vue';
 
 const store = useChatStore();
+const documentPreview = useDocumentPreview();
 const listRef = ref<HTMLElement | null>(null);
 const { renderECharts } = useEchartsRenderer();
 
@@ -236,6 +243,20 @@ function escapeHtml(text: string): string {
 	const div = document.createElement('div');
 	div.textContent = text;
 	return div.innerHTML;
+}
+
+function handleMessageClick(event: MouseEvent) {
+	const target = event.target;
+	if (!(target instanceof Element)) return;
+	const link = target.closest<HTMLAnchorElement>('a[href]');
+	if (!link) return;
+	const citation = parseDocumentCitationUrl(link.href, window.location.origin);
+	if (!citation) return;
+	event.preventDefault();
+	documentPreview.open(
+		citation,
+		link.textContent?.replace(/\s*·\s*第\d+页\s*$/, '').trim() || 'PDF 文档',
+	);
 }
 
 let scrollRafId: number | null = null;

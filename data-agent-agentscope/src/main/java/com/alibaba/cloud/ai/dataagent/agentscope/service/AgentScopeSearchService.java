@@ -24,6 +24,6 @@ public interface AgentScopeSearchService {
 
 	Flux<ServerSentEvent<AgentEvent>> streamSearch(AgentStreamRequest request);
 
-	void stop(String conversationId, String runId);
+	void stop(String conversationId);
 
 }

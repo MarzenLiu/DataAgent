@@ -10,7 +10,7 @@ permissions and * limitations under the License. */
 <template>
 	<div class="input-area">
 		<!-- Status / Info bar -->
-		<div class="status-bar">
+		<div v-if="!store.showHumanFeedback" class="status-bar">
 			<div class="status-chips">
 				<!-- Datasource selector -->
 				<div class="ds-chip-wrap" @click.stop>
@@ -73,7 +73,7 @@ permissions and * limitations under the License. */
 		</div>
 
 		<!-- Textarea -->
-		<div class="textarea-wrap">
+		<div v-if="!store.showHumanFeedback" class="textarea-wrap">
 			<textarea
 				ref="textareaRef"
 				v-model="inputText"
@@ -87,7 +87,7 @@ permissions and * limitations under the License. */
 		</div>
 
 		<!-- Bottom action bar -->
-		<div class="action-bar">
+		<div v-if="!store.showHumanFeedback" class="action-bar">
 			<div class="action-bar-left">
 				<div class="extra-options">
 					<label
@@ -158,17 +158,41 @@ permissions and * limitations under the License. */
 						>mdi-account-question-outline</v-icon
 					>
 					<span>请确认工具执行</span>
+					<span class="feedback-count"
+						>共 {{ confirmationCards.length }} 项</span
+					>
 				</div>
-				<pre class="feedback-request">{{ store.pendingConfirmationText }}</pre>
+				<div class="feedback-summary">
+					本次操作将统一批准或拒绝以下全部工具调用。
+				</div>
+				<div class="feedback-request-list custom-scrollbar">
+					<div v-if="!confirmationCards.length" class="feedback-empty">
+						未收到可展示的工具调用，请拒绝本次操作后重试。
+					</div>
+					<article
+						v-for="(card, index) in confirmationCards"
+						:key="card.id"
+						class="feedback-request-card"
+					>
+						<div class="feedback-request-header">
+							<strong>{{ index + 1 }}. {{ card.title }}</strong>
+							<code :title="card.id">{{ card.id }}</code>
+						</div>
+						<ChatCodeBlock :code="card.details" :language="card.language" />
+					</article>
+				</div>
 				<div class="feedback-actions">
 					<v-btn
 						class="feedback-btn feedback-btn--once"
+						:disabled="!confirmationCards.length"
 						@click="store.submitFeedback('once')"
 					>
-						<v-icon size="14" class="mr-1">mdi-check</v-icon>仅批准本次
+						<v-icon size="14" class="mr-1">mdi-check</v-icon>批准全部
+						{{ confirmationCards.length }} 项
 					</v-btn>
 					<v-btn
 						class="feedback-btn feedback-btn--tool-session"
+						:disabled="!confirmationCards.length"
 						@click="store.submitFeedback('tool-session')"
 					>
 						<v-icon size="14" class="mr-1">mdi-shield-check-outline</v-icon
@@ -176,6 +200,7 @@ permissions and * limitations under the License. */
 					</v-btn>
 					<v-btn
 						class="feedback-btn feedback-btn--all-session"
+						:disabled="!confirmationCards.length"
 						@click="store.submitFeedback('all-session')"
 					>
 						<v-icon size="14" class="mr-1">mdi-shield-lock-open-outline</v-icon
@@ -198,8 +223,12 @@ permissions and * limitations under the License. */
 
 <script setup lang="ts">
 import { useChatStore } from '~/stores/chat';
+import { presentToolConfirmation } from '~/utils/agentEvents';
 
 const store = useChatStore();
+const confirmationCards = computed(() =>
+	store.pendingConfirmations.map(presentToolConfirmation),
+);
 const inputText = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const showDsMenu = ref(false);
@@ -278,6 +307,9 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 <style scoped>
 .input-area {
 	flex-shrink: 0;
+	min-height: 0;
+	max-height: 100%;
+	overflow-y: auto;
 	background: white;
 	border-top: 1px solid #e8edf2;
 	padding: 12px 32px 16px;
@@ -519,6 +551,11 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 /* ── Human feedback ──────────────────────────────────────────────────────────── */
 .human-feedback-panel {
 	margin-top: 10px;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	max-height: min(70vh, 560px);
+	overflow: hidden;
 	background: #fffbeb;
 	border: 1px solid #fde68a;
 	border-radius: 10px;
@@ -532,21 +569,66 @@ onUnmounted(() => document.removeEventListener('click', closeMenus));
 	color: #92400e;
 	margin-bottom: 8px;
 }
-.feedback-request {
-	width: 100%;
+.feedback-count {
+	margin-left: auto;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: #fef3c7;
+	font-size: 12px;
+	font-weight: 500;
+}
+.feedback-summary {
+	margin-bottom: 8px;
+	font-size: 12px;
+	color: #92400e;
+}
+.feedback-request-list {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+	flex-direction: column;
+	gap: 8px;
+	overflow-y: auto;
+	padding-right: 4px;
+	margin-bottom: 8px;
+}
+.feedback-empty {
+	padding: 16px;
+	border: 1px dashed #f59e0b;
+	border-radius: 6px;
+	background: white;
+	font-size: 12.5px;
+	color: #92400e;
+	text-align: center;
+}
+.feedback-request-card {
+	flex-shrink: 0;
 	background: white;
 	border: 1px solid #fde68a;
 	border-radius: 6px;
-	padding: 8px 10px;
-	font-size: 13px;
-	color: #1e293b;
-	font-family: inherit;
-	white-space: pre-wrap;
-	word-break: break-word;
-	margin-bottom: 8px;
+	overflow: hidden;
+}
+.feedback-request-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 7px 10px;
+	border-bottom: 1px solid #fef3c7;
+	font-size: 12.5px;
+	color: #78350f;
+}
+.feedback-request-header code {
+	max-width: 45%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 11px;
+	color: #64748b;
 }
 .feedback-actions {
 	display: flex;
+	flex-shrink: 0;
 	gap: 8px;
 	flex-wrap: wrap;
 }

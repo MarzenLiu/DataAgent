@@ -23,7 +23,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.http.server.reactive.ServerHttpResponse;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,9 +57,8 @@ public class GraphController {
 	}
 
 	@PostMapping("/stream/stop")
-	public ResponseEntity<Void> stopStream(@RequestParam("conversationId") String conversationId,
-			@RequestParam(value = "runId", required = false) String runId) {
-		searchService.stop(conversationId, StringUtils.hasText(runId) ? runId : null);
+	public ResponseEntity<Void> stopStream(@RequestParam("conversationId") String conversationId) {
+		searchService.stop(conversationId);
 		return ResponseEntity.noContent().build();
 	}
 

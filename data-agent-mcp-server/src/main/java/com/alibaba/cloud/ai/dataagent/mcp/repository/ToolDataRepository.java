@@ -35,10 +35,11 @@ public class ToolDataRepository {
 	public Map<Integer, KnowledgeRecord> findRecalledKnowledge(long agentId) {
 		try {
 			return jdbcTemplate.query("""
-					SELECT id, title, type, question, content, source_filename FROM agent_knowledge
+					SELECT id, title, type, question, content, source_filename, file_type FROM agent_knowledge
 					WHERE agent_id = ? AND is_recall = 1 AND is_deleted = 0 ORDER BY id
 					""", (rs, rowNum) -> new KnowledgeRecord(rs.getInt("id"), rs.getString("title"), rs.getString("type"),
-					rs.getString("question"), rs.getString("content"), rs.getString("source_filename")), agentId)
+					rs.getString("question"), rs.getString("content"), rs.getString("source_filename"),
+					rs.getString("file_type")), agentId)
 				.stream().collect(Collectors.toUnmodifiableMap(KnowledgeRecord::id, Function.identity()));
 		}
 		catch (DataAccessException ex) { return Map.of(); }
@@ -92,7 +93,8 @@ public class ToolDataRepository {
 	private String value(String value) { return value == null ? "" : value; }
 
 	public record EmbeddingSettings(String provider, String baseUrl, String apiKey, String modelName, String embeddingsPath) { }
-	public record KnowledgeRecord(int id, String title, String type, String question, String content, String sourceFilename) { }
+	public record KnowledgeRecord(int id, String title, String type, String question, String content,
+			String sourceFilename, String fileType) { }
 	public record DatasourceSettings(int relationId, int datasourceId, String name, String type, String host, int port,
 			String databaseName, String username, String password, String connectionUrl) { }
 }

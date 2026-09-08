@@ -416,7 +416,8 @@
 								item-value="value"
 								variant="outlined"
 								density="compact"
-								hide-details
+								hint="混合分块会保留标题、表格等文档结构，并按 token 上限自动合并相邻小块。"
+								persistent-hint
 							/>
 
 							<v-file-input
@@ -603,7 +604,7 @@ const {
 		isRecall: true,
 		question: '',
 		answer: '',
-		splitterType: 'recursive',
+		splitterType: 'docling-hybrid',
 	}),
 });
 
@@ -668,8 +669,9 @@ const embeddingStatusOptions = [
 ];
 
 const splitterTypeOptions = [
-	{ label: 'Token 分块', value: 'token' },
-	{ label: '递归分块', value: 'recursive' },
+	{ label: 'Docling 混合分块（推荐）', value: 'docling-hybrid' },
+	{ label: '固定长度', value: 'token' },
+	{ label: '固定长度（带重叠）', value: 'recursive' },
 	{ label: '句子分块', value: 'sentence' },
 	{ label: '段落分块', value: 'paragraph' },
 	{ label: '语义分块', value: 'semantic' },
@@ -795,7 +797,7 @@ function editKnowledge(knowledge: AgentKnowledge) {
 			knowledge.type === 'QA' || knowledge.type === 'FAQ'
 				? knowledge.content
 				: '',
-		splitterType: 'recursive',
+		splitterType: 'docling-hybrid',
 	});
 }
 

@@ -52,7 +52,8 @@ final class DoclingMappingSupport {
 		return metadata;
 	}
 
-	static void addProvenance(Map<String, Object> metadata, List<ProvenanceItem> provenance) {
+	static void addProvenance(Map<String, Object> metadata, DoclingDocument document,
+			List<ProvenanceItem> provenance) {
 		if (provenance == null || provenance.isEmpty()) {
 			return;
 		}
@@ -64,6 +65,24 @@ final class DoclingMappingSupport {
 		if (bbox != null) {
 			metadata.put(DocumentMetadataConstant.BOUNDING_BOX,
 					"%s,%s,%s,%s".formatted(bbox.getL(), bbox.getT(), bbox.getR(), bbox.getB()));
+			if (StringUtils.hasText(bbox.getCoordOrigin())) {
+				metadata.put(DocumentMetadataConstant.COORDINATE_ORIGIN, bbox.getCoordOrigin());
+			}
+		}
+		if (document.getPages() != null && first.getPageNo() != null) {
+			document.getPages().values().stream()
+				.filter(page -> first.getPageNo().equals(page.getPageNo()))
+				.map(DoclingDocument.PageItem::getSize)
+				.filter(java.util.Objects::nonNull)
+				.findFirst()
+				.ifPresent(size -> {
+					if (size.getWidth() != null) {
+						metadata.put(DocumentMetadataConstant.PAGE_WIDTH, size.getWidth());
+					}
+					if (size.getHeight() != null) {
+						metadata.put(DocumentMetadataConstant.PAGE_HEIGHT, size.getHeight());
+					}
+				});
 		}
 	}
 
@@ -92,6 +111,34 @@ final class DoclingMappingSupport {
 		catch (RuntimeException ex) {
 			return "";
 		}
+	}
+
+	static Object resolveItem(DoclingDocument document, String reference) {
+		if (document == null || !StringUtils.hasText(reference)) {
+			return null;
+		}
+		try {
+			if (reference.startsWith("#/groups/")) {
+				return document.getGroups().get(referenceIndex(reference, "#/groups/"));
+			}
+			if (reference.startsWith("#/texts/")) {
+				return document.getTexts().get(referenceIndex(reference, "#/texts/"));
+			}
+			if (reference.startsWith("#/tables/")) {
+				return document.getTables().get(referenceIndex(reference, "#/tables/"));
+			}
+			if (reference.startsWith("#/pictures/")) {
+				return document.getPictures().get(referenceIndex(reference, "#/pictures/"));
+			}
+		}
+		catch (RuntimeException ignored) {
+			return null;
+		}
+		return null;
+	}
+
+	private static int referenceIndex(String reference, String prefix) {
+		return Integer.parseInt(reference.substring(prefix.length()));
 	}
 
 	static String captions(DoclingDocument document, List<RefItem> references) {

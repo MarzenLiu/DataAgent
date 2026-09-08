@@ -65,15 +65,27 @@ data-agent:
     # Production deployments should override DOCLING_API_KEY explicitly.
     api-key: ${DOCLING_API_KEY:data-agent-docling}
     connect-timeout: ${DOCLING_CONNECT_TIMEOUT:5s}
-    read-timeout: ${DOCLING_READ_TIMEOUT:10m}
+    read-timeout: ${DOCLING_READ_TIMEOUT:95m}
     async-poll-interval: ${DOCLING_POLL_INTERVAL:2s}
-    async-timeout: ${DOCLING_ASYNC_TIMEOUT:15m}
+    async-timeout: ${DOCLING_ASYNC_TIMEOUT:90m}
     fallback-to-tika: ${DOCLING_FALLBACK_TO_TIKA:true}
+    hybrid-chunking:
+      enabled: ${DOCLING_HYBRID_CHUNKING_ENABLED:true}
+      max-tokens: ${DOCLING_HYBRID_MAX_TOKENS:512}
+      tokenizer: ${DOCLING_HYBRID_TOKENIZER:sentence-transformers/all-MiniLM-L6-v2}
+      merge-peers: ${DOCLING_HYBRID_MERGE_PEERS:true}
+      use-markdown-tables: ${DOCLING_HYBRID_MARKDOWN_TABLES:true}
     pdf:
       ocr-enabled: ${DOCLING_PDF_OCR_ENABLED:true}
+      backend: ${DOCLING_PDF_BACKEND:PYPDFIUM2}
+      include-images: ${DOCLING_PDF_INCLUDE_IMAGES:false}
+      table-structure-enabled: ${DOCLING_PDF_TABLE_STRUCTURE_ENABLED:true}
+      table-mode: ${DOCLING_PDF_TABLE_MODE:FAST}
       max-table-rows-per-chunk: ${DOCLING_PDF_TABLE_ROWS:20}
     excel:
       max-table-rows-per-chunk: ${DOCLING_EXCEL_TABLE_ROWS:50}
+    word:
+      max-table-rows-per-chunk: ${DOCLING_WORD_TABLE_ROWS:30}
 
 mybatis:
 

@@ -109,8 +109,8 @@ public class AgentKnowledgeReviewServiceImpl implements AgentKnowledgeReviewServ
 			.toList();
 		return new KnowledgeParsePreviewVO(knowledgeId, knowledge.getTitle(), knowledge.getSourceFilename(),
 				knowledge.getFileType(), revision.getId(), revision.getRevisionNo(), revision.getStatus(),
-				revision.getParser(), revision.getParserVersion(), revision.getChunkCount(), revision.getWarningCount(),
-				revision.getReviewComment(), revision.getErrorMsg(), revision.getCreatedTime(), chunks);
+				revision.getParser(), revision.getParserVersion(), knowledge.getSplitterType(), revision.getChunkCount(),
+				revision.getWarningCount(), revision.getReviewComment(), revision.getErrorMsg(), revision.getCreatedTime(), chunks);
 	}
 
 	@Override

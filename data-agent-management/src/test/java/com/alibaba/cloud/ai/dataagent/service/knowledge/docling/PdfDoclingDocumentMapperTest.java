@@ -23,9 +23,11 @@ import ai.docling.core.DoclingDocument.ContentLayer;
 import ai.docling.core.DoclingDocument.DocItemLabel;
 import ai.docling.core.DoclingDocument.GroupItem;
 import ai.docling.core.DoclingDocument.GroupLabel;
+import ai.docling.core.DoclingDocument.PageItem;
 import ai.docling.core.DoclingDocument.ProvenanceItem;
 import ai.docling.core.DoclingDocument.RefItem;
 import ai.docling.core.DoclingDocument.SectionHeaderItem;
+import ai.docling.core.DoclingDocument.Size;
 import ai.docling.core.DoclingDocument.TableCell;
 import ai.docling.core.DoclingDocument.TableData;
 import ai.docling.core.DoclingDocument.TableItem;
@@ -89,6 +91,7 @@ class PdfDoclingDocumentMapperTest {
 			.text(heading)
 			.text(paragraph)
 			.table(table)
+			.page("2", PageItem.builder().pageNo(2).size(Size.builder().width(595.0).height(842.0).build()).build())
 			.build();
 
 		List<com.alibaba.cloud.ai.dataagent.rag.Document> chunks = mapper.map(document, "report.pdf");
@@ -97,6 +100,9 @@ class PdfDoclingDocumentMapperTest {
 		assertThat(chunks.get(0).getText()).contains("标题路径: 财务分析", "本期收入增长");
 		assertThat(chunks.get(0).getMetadata()).containsEntry(DocumentMetadataConstant.PAGE_NUMBER, 2)
 			.containsEntry(DocumentMetadataConstant.BOUNDING_BOX, "1.0,2.0,3.0,4.0")
+			.containsEntry(DocumentMetadataConstant.COORDINATE_ORIGIN, "BOTTOMLEFT")
+			.containsEntry(DocumentMetadataConstant.PAGE_WIDTH, 595.0)
+			.containsEntry(DocumentMetadataConstant.PAGE_HEIGHT, 842.0)
 			.containsEntry(DocumentMetadataConstant.SECTION_PATH, "财务分析")
 			.containsEntry(DocumentMetadataConstant.PARSER, "docling");
 		assertThat(chunks.get(1).getText()).contains("| 区域 | 收入 |", "| 华东 | 100 |");
@@ -110,7 +116,7 @@ class PdfDoclingDocumentMapperTest {
 	private static ProvenanceItem provenance(int page) {
 		return ProvenanceItem.builder()
 			.pageNo(page)
-			.bbox(BoundingBox.builder().l(1.0).t(2.0).r(3.0).b(4.0).build())
+			.bbox(BoundingBox.builder().l(1.0).t(2.0).r(3.0).b(4.0).coordOrigin("BOTTOMLEFT").build())
 			.build();
 	}
 
