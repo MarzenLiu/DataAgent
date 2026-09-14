@@ -1,6 +1,15 @@
 server:
   port: ${AGENTSCOPE_SERVER_PORT:8066}
 
+management:
+  server:
+    address: ${AGENTSCOPE_MANAGEMENT_ADDRESS:127.0.0.1}
+    port: ${AGENTSCOPE_MANAGEMENT_PORT:9066}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,startup
+
 spring:
   application:
     name: data-agent-agentscope

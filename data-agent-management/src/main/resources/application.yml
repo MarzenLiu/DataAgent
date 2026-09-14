@@ -1,6 +1,15 @@
 server:
   port: 8065
 
+management:
+  server:
+    address: ${DATA_AGENT_MANAGEMENT_ADDRESS:127.0.0.1}
+    port: ${DATA_AGENT_MANAGEMENT_PORT:9065}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,startup
+
 springdoc:
   api-docs:
     path: /v3/api-docs

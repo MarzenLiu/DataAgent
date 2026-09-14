@@ -17,6 +17,7 @@ package com.alibaba.cloud.ai.dataagent;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.metrics.buffering.BufferingApplicationStartup;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @EnableScheduling
@@ -24,7 +25,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class DataAgentApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(DataAgentApplication.class, args);
+		SpringApplication application = new SpringApplication(DataAgentApplication.class);
+		application.setApplicationStartup(new BufferingApplicationStartup(4096));
+		application.run(args);
 	}
 
 }

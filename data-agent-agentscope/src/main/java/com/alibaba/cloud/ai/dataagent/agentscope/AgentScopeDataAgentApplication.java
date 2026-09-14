@@ -19,6 +19,7 @@ import com.alibaba.cloud.ai.dataagent.agentscope.config.AgentScopeDataAgentPrope
 import com.alibaba.cloud.ai.dataagent.agentscope.config.LangfuseProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.metrics.buffering.BufferingApplicationStartup;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
@@ -26,7 +27,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 public class AgentScopeDataAgentApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(AgentScopeDataAgentApplication.class, args);
+		SpringApplication application = new SpringApplication(AgentScopeDataAgentApplication.class);
+		application.setApplicationStartup(new BufferingApplicationStartup(4096));
+		application.run(args);
 	}
 
 }

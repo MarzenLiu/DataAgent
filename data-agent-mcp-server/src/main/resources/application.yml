@@ -2,6 +2,15 @@ server:
   port: ${DATA_AGENT_MCP_SERVER_PORT:8068}
   address: ${DATA_AGENT_MCP_SERVER_ADDRESS:127.0.0.1}
 
+management:
+  server:
+    address: ${DATA_AGENT_MCP_MANAGEMENT_ADDRESS:127.0.0.1}
+    port: ${DATA_AGENT_MCP_MANAGEMENT_PORT:9068}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,startup
+
 spring:
   application:
     name: data-agent-mcp-server
