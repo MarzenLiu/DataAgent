@@ -1,0 +1,33 @@
+schema: spec-driven
+
+context: |
+  DataAgent is a data-analysis agent built on AgentScope Java 2.
+  Backend: Java 17, Maven multi-module, Spring Boot 3.4.8, MyBatis, and the official MCP Java SDK.
+  Frontend: Nuxt, located in data-agent-frontend-nuxt.
+
+  Runtime service boundaries:
+  - data-agent-agentscope (port 8066): agent reasoning, orchestration, session state, HITL, skills, and streaming events.
+  - data-agent-mcp-server (port 8068): database, schema, semantic-model, and knowledge-retrieval MCP tools.
+  - data-agent-management (port 8065): management APIs for agents, data sources, knowledge, and model configuration.
+
+  Preserve these service boundaries. Prefer targeted module builds and tests. Do not overwrite unrelated
+  working-tree changes or commit credentials and environment-specific application configuration.
+
+rules:
+  proposal:
+    - Identify the affected runtime service or frontend module.
+    - State non-goals when the change could blur service boundaries.
+  specs:
+    - Describe externally observable behavior with testable scenarios.
+  design:
+    - Document cross-service calls, streaming behavior, persistence, and compatibility when affected.
+  tasks:
+    - Order work by dependency and include targeted tests or verification for changed modules.
+
+operations:
+  apply:
+    guidance:
+      - Preserve unrelated working-tree changes and run the narrowest meaningful verification first.
+  archive:
+    guidance:
+      - Confirm implementation and verification are complete before merging delta specs.

@@ -35,6 +35,9 @@ target/
 # node_modules
 **/node_modules
 
+# Local scratch and generated review artifacts
+/tmp/
+
 
 # windows os
 /extensions/
