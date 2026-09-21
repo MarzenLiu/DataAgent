@@ -1,0 +1,8 @@
+info:
+  app:
+    name: data-agent-mcp-server
+    configuration-source: nacos
+
+logging:
+  level:
+    com.alibaba.cloud.ai.dataagent.mcp: INFO

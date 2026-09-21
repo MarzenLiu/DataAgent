@@ -18,6 +18,27 @@ springdoc:
 
 # 存储 DataAgent 业务数据的数据库，并非Agent分析数据的来源
 spring:
+  application:
+    name: data-agent-management
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${NACOS_CONFIG_GROUP:DATA_AGENT_GROUP}&refreshEnabled=true
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:dataagent-nacos}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_DISCOVERY_GROUP:DATA_AGENT_GROUP}
+        health-indicator:
+          enabled: true
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:dataagent-nacos}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_CONFIG_GROUP:DATA_AGENT_GROUP}
   profiles:
     # Local development now uses Milvus by default. Set
     # SPRING_PROFILES_ACTIVE to another profile to override it.

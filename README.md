@@ -8,17 +8,59 @@ DataAgent 是一个基于 AgentScope Java 2 的数据分析 Agent。
 - `data-agent-mcp-server`：官方 MCP Java SDK 数据库与知识检索工具（端口 8068）。
 - `data-agent-management`：智能体、数据源、知识、模型配置等管理 API（端口 8065）。
 
+所有服务通过 `data-agent-gateway`（端口 8060）统一对外提供访问，并注册到 Nacos。Gateway
+通过 Nacos 服务发现进行负载均衡，不依赖固定的下游地址。
+
 前端通过 `/api/stream/search` 连接 AgentScope 服务。AgentScope 通过 MCP 调用数据库查询、Schema、语义模型和知识检索工具。知识向量写入由管理服务的应用层实现负责，Milvus 与本地 JSON 两种格式均与 MCP 服务共享。
 
 ## 本地启动
 
 ```bash
+docker compose -f docker-file/docker-compose-nacos.yml up -d
+
 mvn -f data-agent-management/pom.xml spring-boot:run
 mvn -f data-agent-mcp-server/pom.xml spring-boot:run
 mvn -f data-agent-agentscope/pom.xml spring-boot:run
+mvn -f data-agent-gateway/pom.xml spring-boot:run
 ```
 
 默认需要 MySQL、Milvus 和一个已激活的模型配置。主要环境变量见各模块的 `application.yml`。
+
+应用统一入口为 `http://127.0.0.1:8060`。Gateway 的默认路由如下：
+
+| 请求路径 | 目标服务 |
+| --- | --- |
+| `/api/stream/**`、`/api/memories/**`、`/api/internal/model/**` | `data-agent-agentscope` |
+| `/mcp/**` | `data-agent-mcp-server` |
+| 其他 `/api/**`、`/nl2sql/**`、`/echo/**`、`/uploads/**` 和 OpenAPI 路径 | `data-agent-management` |
+
+## Nacos 配置
+
+- 控制台：`http://127.0.0.1:8080`
+- 服务端地址：`127.0.0.1:8848`
+- 开发环境账号：`nacos`
+- 开发环境密码：`dataagent-nacos`
+- 配置分组：`DATA_AGENT_GROUP`
+- 命名空间：`public`（配置中的空 namespace）
+- Data ID：`data-agent-gateway.yml`、`data-agent-management.yml`、
+  `data-agent-agentscope.yml`、`data-agent-mcp-server.yml`
+
+首次启动 `docker-compose-nacos.yml` 时，`nacos-init` 会初始化管理员密码并发布上述四份初始配置。
+生产环境必须通过 `NACOS_PASSWORD`、`NACOS_AUTH_TOKEN`、`NACOS_AUTH_IDENTITY_KEY` 和
+`NACOS_AUTH_IDENTITY_VALUE` 替换开发默认值。应用侧可通过 `NACOS_SERVER_ADDR`、
+`NACOS_USERNAME`、`NACOS_PASSWORD`、`NACOS_NAMESPACE`、`NACOS_CONFIG_GROUP` 和
+`NACOS_DISCOVERY_GROUP` 连接其他 Nacos 环境。
+
+## 核心版本
+
+| 组件 | 版本 | 说明 |
+| --- | --- | --- |
+| Nacos Server | 3.2.4 | 最新 GA 服务端 |
+| Spring Cloud Alibaba | 2025.0.0.0 | 四个服务统一版本 |
+| Spring Cloud Gateway | 4.3.5 | Spring Boot 3.5 兼容线的最新稳定版 |
+| Spring Boot | 3.5.16 | 四个服务统一版本 |
+| Spring Cloud | 2025.0.0 | 四个服务统一版本 |
+| MyBatis Spring Boot Starter | 3.0.5 | Spring Boot 3.5 兼容版本 |
 
 ## 架构说明
 

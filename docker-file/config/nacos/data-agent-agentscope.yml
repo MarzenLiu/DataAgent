@@ -1,0 +1,8 @@
+info:
+  app:
+    name: data-agent-agentscope
+    configuration-source: nacos
+
+logging:
+  level:
+    com.alibaba.cloud.ai.dataagent.agentscope: INFO

@@ -1,0 +1,8 @@
+info:
+  app:
+    name: data-agent-gateway
+    configuration-source: nacos
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
