@@ -36,6 +36,8 @@ describe('ModelConfigService.testConnection', () => {
 
 		await modelConfigService.testConnection(42);
 
-		expect(axios.post).toHaveBeenCalledWith('/api/model-config/test/42');
+		expect(axios.post).toHaveBeenCalledWith(
+			'/data-agent-management/api/model-config/test/42',
+		);
 	});
 });

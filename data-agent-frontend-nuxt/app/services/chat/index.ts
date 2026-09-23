@@ -65,7 +65,7 @@ export interface ChatMessage {
   titleNeeded?: boolean;
 }
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = '/data-agent-management/api';
 
 /**
  * @description 聊天业务逻辑处理类

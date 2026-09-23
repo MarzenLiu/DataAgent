@@ -69,7 +69,7 @@ describe('AgentScope stream service', () => {
 		await closeStream(true);
 
 		expect(fetch).toHaveBeenCalledWith(
-			'/api/stream/stop?conversationId=conversation-1',
+			'/data-agent-agentscope/api/stream/stop?conversationId=conversation-1',
 			{ method: 'POST', keepalive: true },
 		);
 		expect(FakeEventSource.latest.closed).toBe(false);

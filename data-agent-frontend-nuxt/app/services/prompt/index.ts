@@ -58,7 +58,7 @@ export interface PromptConfigResponse {
   data?: PromptConfig[] | PromptConfig;
 }
 
-const API_BASE_URL = '/api/prompt-config';
+const API_BASE_URL = '/data-agent-management/api/prompt-config';
 
 /**
  * @description 提示词配置业务逻辑处理类

@@ -66,7 +66,7 @@ export interface ModelCheckReady {
   ready: boolean;
 }
 
-const API_BASE_URL = "/api/model-config";
+const API_BASE_URL = "/data-agent-management/api/model-config";
 
 /**
  * @description 模型配置业务逻辑处理类

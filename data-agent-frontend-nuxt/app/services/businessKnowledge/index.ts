@@ -77,7 +77,7 @@ export interface UpdateBusinessKnowledgeDTO {
   agentId: number;
 }
 
-const API_BASE_URL = '/api/business-knowledge';
+const API_BASE_URL = '/data-agent-management/api/business-knowledge';
 
 /**
  * @description 业务术语知识业务逻辑处理类

@@ -167,8 +167,8 @@ class AgentScopeSearchServiceImplTest {
 		AgentScopeSearchServiceImpl.ExecutionState state = new AgentScopeSearchServiceImpl.ExecutionState();
 		String toolResult = """
 				{"matches":[
-				  {"citation":{"citationId":"kb-21-used","knowledgeId":21,"filename":"SLT191-2025.pdf","pageNumber":18,"url":"/api/agent-knowledge/21/review/source#page=18"}},
-				  {"citation":{"citationId":"kb-22-unused","knowledgeId":22,"filename":"无关资料.pdf","pageNumber":9,"url":"/api/agent-knowledge/22/review/source#page=9"}}
+				  {"citation":{"citationId":"kb-21-used","knowledgeId":21,"filename":"SLT191-2025.pdf","pageNumber":18,"url":"/data-agent-management/api/agent-knowledge/21/review/source#page=18"}},
+				  {"citation":{"citationId":"kb-22-unused","knowledgeId":22,"filename":"无关资料.pdf","pageNumber":9,"url":"/data-agent-management/api/agent-knowledge/22/review/source#page=9"}}
 				]}
 				""";
 		state.observe(new ToolResultTextDeltaEvent("reply-1", "tool-1", "search_knowledge_base", toolResult));
@@ -182,7 +182,7 @@ class AgentScopeSearchServiceImplTest {
 		assertThat(decorated).isInstanceOfSatisfying(AgentResultEvent.class,
 				event -> assertThat(event.getResult().getTextContent())
 					.isEqualTo("混凝土结构应满足相关规定。\n\n### 参考文档\n"
-							+ "- [SLT191-2025.pdf · 第18页](/api/agent-knowledge/21/review/source#page=18)"));
+							+ "- [SLT191-2025.pdf · 第18页](/data-agent-management/api/agent-knowledge/21/review/source#page=18)"));
 		assertThat(state.finalResult()).isEqualTo(((AgentResultEvent) decorated).getResult().getTextContent());
 		assertThat(state.finalResult()).doesNotContain("无关资料.pdf", "[[cite:");
 	}
@@ -191,7 +191,7 @@ class AgentScopeSearchServiceImplTest {
 	void omitsReferencesWhenAnswerUsesNoValidCitation() {
 		AgentScopeSearchServiceImpl.ExecutionState state = new AgentScopeSearchServiceImpl.ExecutionState();
 		String toolResult = """
-				{"matches":[{"citation":{"citationId":"kb-21-candidate","knowledgeId":21,"filename":"候选资料.pdf","pageNumber":18,"url":"/api/agent-knowledge/21/review/source#page=18"}}]}
+				{"matches":[{"citation":{"citationId":"kb-21-candidate","knowledgeId":21,"filename":"候选资料.pdf","pageNumber":18,"url":"/data-agent-management/api/agent-knowledge/21/review/source#page=18"}}]}
 				""";
 		state.observe(new ToolResultTextDeltaEvent("reply-1", "tool-1", "search_knowledge_base", toolResult));
 		Msg answer = Msg.builder()

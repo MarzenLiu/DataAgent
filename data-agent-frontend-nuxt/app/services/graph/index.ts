@@ -69,7 +69,7 @@ export interface AgentStreamEvent {
 	value?: Record<string, unknown>;
 }
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = '/data-agent-agentscope/api';
 
 class GraphService {
 	async streamSearch(

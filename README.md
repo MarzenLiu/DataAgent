@@ -11,7 +11,7 @@ DataAgent 是一个基于 AgentScope Java 2 的数据分析 Agent。
 所有服务通过 `data-agent-gateway`（端口 8060）统一对外提供访问，并注册到 Nacos。Gateway
 通过 Nacos 服务发现进行负载均衡，不依赖固定的下游地址。
 
-前端通过 `/api/stream/search` 连接 AgentScope 服务。AgentScope 通过 MCP 调用数据库查询、Schema、语义模型和知识检索工具。知识向量写入由管理服务的应用层实现负责，Milvus 与本地 JSON 两种格式均与 MCP 服务共享。
+前端通过 `/data-agent-agentscope/api/stream/search` 连接 AgentScope 服务。AgentScope 通过 MCP 调用数据库查询、Schema、语义模型和知识检索工具。知识向量写入由管理服务的应用层实现负责，Milvus 与本地 JSON 两种格式均与 MCP 服务共享。
 
 ## 本地启动
 
@@ -30,9 +30,11 @@ mvn -f data-agent-gateway/pom.xml spring-boot:run
 
 | 请求路径 | 目标服务 |
 | --- | --- |
-| `/api/stream/**`、`/api/memories/**`、`/api/internal/model/**` | `data-agent-agentscope` |
-| `/mcp/**` | `data-agent-mcp-server` |
-| 其他 `/api/**`、`/nl2sql/**`、`/echo/**`、`/uploads/**` 和 OpenAPI 路径 | `data-agent-management` |
+| `/data-agent-agentscope/**` | `data-agent-agentscope` |
+| `/data-agent-mcp-server/**` | `data-agent-mcp-server` |
+| `/data-agent-management/**` | `data-agent-management` |
+
+Gateway 根据第一段服务名选择目标服务，并在转发前去掉该前缀。例如 `/data-agent-management/api/agent/list` 会转发为管理服务的 `/api/agent/list`。
 
 ## Nacos 配置
 

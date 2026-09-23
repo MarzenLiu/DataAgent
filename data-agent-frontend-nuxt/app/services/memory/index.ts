@@ -21,7 +21,7 @@ export interface MemoryOverview {
 	daily: MemoryDocument[];
 }
 
-const API_BASE_URL = '/api/memories';
+const API_BASE_URL = '/data-agent-agentscope/api/memories';
 
 class MemoryService {
 	async get(agentId: number): Promise<MemoryOverview> {

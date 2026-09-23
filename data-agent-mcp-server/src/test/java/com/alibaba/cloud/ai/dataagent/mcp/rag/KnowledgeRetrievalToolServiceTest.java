@@ -39,7 +39,7 @@ class KnowledgeRetrievalToolServiceTest {
 		assertThat(match.path("citationId").asText()).matches("kb-7-[0-9a-f-]{36}");
 		assertThat(match.path("citation").path("citationId").asText()).isEqualTo(match.path("citationId").asText());
 		assertThat(match.path("citation").path("url").asText())
-			.isEqualTo("/api/agent-knowledge/7/review/source#page=18");
+			.isEqualTo("/data-agent-management/api/agent-knowledge/7/review/source#page=18");
 		assertThat(new ObjectMapper().readTree(result).path("instruction").asText())
 			.contains("[[cite:实际citationId值]]", "不要标记未使用的匹配");
 	}
@@ -58,7 +58,7 @@ class KnowledgeRetrievalToolServiceTest {
 		String result = service.search(9L, "混凝土结构");
 
 		assertThat(new ObjectMapper().readTree(result).at("/matches/0/citation/url").asText())
-			.isEqualTo("/api/agent-knowledge/7/review/source#page=18&bbox=84.5%2C278.0%2C510.0%2C220.0"
+			.isEqualTo("/data-agent-management/api/agent-knowledge/7/review/source#page=18&bbox=84.5%2C278.0%2C510.0%2C220.0"
 					+ "&origin=BOTTOMLEFT&pageWidth=595.0&pageHeight=842.0");
 	}
 }

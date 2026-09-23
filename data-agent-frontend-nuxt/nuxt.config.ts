@@ -63,8 +63,15 @@ export default defineNuxtConfig({
 	routeRules: {
 		'/': { redirect: '/agent/new' },
 		// 所有后端请求统一通过 Gateway，再由 Nacos 服务发现路由
-		'/api/**': { proxy: 'http://localhost:8060/api/**' },
-		'/nl2sql/**': { proxy: 'http://localhost:8060/nl2sql/**' },
+		'/data-agent-management/**': {
+			proxy: 'http://localhost:8060/data-agent-management/**',
+		},
+		'/data-agent-agentscope/**': {
+			proxy: 'http://localhost:8060/data-agent-agentscope/**',
+		},
+		'/data-agent-mcp-server/**': {
+			proxy: 'http://localhost:8060/data-agent-mcp-server/**',
+		},
 	},
 	//全局动画配置
 	app: {

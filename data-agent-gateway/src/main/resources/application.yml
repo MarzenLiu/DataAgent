@@ -27,26 +27,24 @@ spring:
       server:
         webflux:
           routes:
-            - id: data-agent-agentscope-stream
+            - id: data-agent-agentscope
               uri: lb://data-agent-agentscope
               predicates:
-                - Path=/api/stream/**
-            - id: data-agent-agentscope-memories
-              uri: lb://data-agent-agentscope
-              predicates:
-                - Path=/api/memories/**
-            - id: data-agent-agentscope-internal-model
-              uri: lb://data-agent-agentscope
-              predicates:
-                - Path=/api/internal/model/**
+                - Path=/data-agent-agentscope/**
+              filters:
+                - StripPrefix=1
             - id: data-agent-mcp-server
               uri: lb://data-agent-mcp-server
               predicates:
-                - Path=/mcp/**
+                - Path=/data-agent-mcp-server/**
+              filters:
+                - StripPrefix=1
             - id: data-agent-management
               uri: lb://data-agent-management
               predicates:
-                - Path=/api/**,/nl2sql/**,/echo/**,/uploads/**,/v3/api-docs/**,/swagger-ui/**,/swagger-ui.html
+                - Path=/data-agent-management/**
+              filters:
+                - StripPrefix=1
 
 management:
   endpoints:

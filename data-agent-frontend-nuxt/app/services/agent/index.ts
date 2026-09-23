@@ -55,7 +55,15 @@ export interface Agent {
 	humanReviewEnabled?: number | boolean;
 }
 
-const API_BASE_URL = '/api/agent';
+const API_BASE_URL = '/data-agent-management/api/agent';
+
+function withGatewayAvatar(agent: Agent): Agent {
+	if (!agent.avatar?.startsWith('/uploads/')) return agent;
+	return {
+		...agent,
+		avatar: `/data-agent-management${agent.avatar}`,
+	};
+}
 
 /**
  * @description 智能体 API Key 响应结构
@@ -90,7 +98,7 @@ class AgentService {
 		const response = await axios.get<Agent[]>(`${API_BASE_URL}/list`, {
 			params,
 		});
-		return response.data;
+		return response.data.map(withGatewayAvatar);
 	}
 
 	/**
@@ -101,7 +109,7 @@ class AgentService {
 	async get(id: number): Promise<Agent | null> {
 		try {
 			const response = await axios.get<Agent>(`${API_BASE_URL}/${id}`);
-			return response.data;
+			return withGatewayAvatar(response.data);
 		} catch (error) {
 			if (axios.isAxiosError(error) && error.response?.status === 404) {
 				return null;
@@ -122,7 +130,7 @@ class AgentService {
 		};
 
 		const response = await axios.post<Agent>(API_BASE_URL, agentData);
-		return response.data;
+		return withGatewayAvatar(response.data);
 	}
 
 	/**
@@ -148,7 +156,7 @@ class AgentService {
 				`${API_BASE_URL}/${id}`,
 				agentData,
 			);
-			return response.data;
+			return withGatewayAvatar(response.data);
 		} catch (error) {
 			if (axios.isAxiosError(error) && error.response?.status === 404) {
 				return null;

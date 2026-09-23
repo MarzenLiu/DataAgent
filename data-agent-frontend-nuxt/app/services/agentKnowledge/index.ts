@@ -125,7 +125,7 @@ export interface KnowledgeParsePreview {
 	chunks: KnowledgeParseChunk[];
 }
 
-const API_BASE_URL = '/api/agent-knowledge';
+const API_BASE_URL = '/data-agent-management/api/agent-knowledge';
 
 /**
  * @description 智能体知识库业务逻辑处理类

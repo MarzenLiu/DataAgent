@@ -42,7 +42,8 @@ interface UpdateDatasourceTablesDto {
   tables?: string[];
 }
 
-const BASE_URL_FUNC = (agentId: string) => `/api/agent/${agentId}/datasources`;
+const BASE_URL_FUNC = (agentId: string) =>
+  `/data-agent-management/api/agent/${agentId}/datasources`;
 
 /**
  * @description 智能体数据源业务逻辑处理类

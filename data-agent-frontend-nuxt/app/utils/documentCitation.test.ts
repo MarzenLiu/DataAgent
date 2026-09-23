@@ -5,7 +5,7 @@ describe('parseDocumentCitationUrl', () => {
 	it('extracts the knowledge id and PDF page from an internal source link', () => {
 		expect(
 			parseDocumentCitationUrl(
-				'/api/agent-knowledge/21/review/source#page=18',
+				'/data-agent-management/api/agent-knowledge/21/review/source#page=18',
 				'http://localhost:3000',
 			),
 		).toEqual({ knowledgeId: 21, pageNumber: 18 });
@@ -14,13 +14,13 @@ describe('parseDocumentCitationUrl', () => {
 	it('rejects external and malformed links', () => {
 		expect(
 			parseDocumentCitationUrl(
-				'https://example.com/api/agent-knowledge/21/review/source#page=18',
+				'https://example.com/data-agent-management/api/agent-knowledge/21/review/source#page=18',
 				'http://localhost:3000',
 			),
 		).toBeUndefined();
 		expect(
 			parseDocumentCitationUrl(
-				'/api/agent-knowledge/21/review/source#page=0',
+				'/data-agent-management/api/agent-knowledge/21/review/source#page=0',
 				'http://localhost:3000',
 			),
 		).toBeUndefined();
@@ -29,7 +29,7 @@ describe('parseDocumentCitationUrl', () => {
 	it('extracts optional PDF highlight coordinates', () => {
 		expect(
 			parseDocumentCitationUrl(
-				'/api/agent-knowledge/21/review/source#page=18&bbox=84.5%2C278%2C510%2C220&origin=BOTTOMLEFT&pageWidth=595&pageHeight=842',
+				'/data-agent-management/api/agent-knowledge/21/review/source#page=18&bbox=84.5%2C278%2C510%2C220&origin=BOTTOMLEFT&pageWidth=595&pageHeight=842',
 				'http://localhost:3000',
 			),
 		).toEqual({

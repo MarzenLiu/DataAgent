@@ -14,7 +14,8 @@ export interface DocumentBoundingBox {
 	bottom: number;
 }
 
-const SOURCE_PATH = /^\/api\/agent-knowledge\/(\d+)\/review\/source$/;
+const SOURCE_PATH =
+	/^\/data-agent-management\/api\/agent-knowledge\/(\d+)\/review\/source$/;
 
 export function parseDocumentCitationUrl(
 	href: string,

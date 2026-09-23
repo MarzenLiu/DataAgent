@@ -97,7 +97,7 @@ public class KnowledgeRetrievalToolService {
 		if (!coordinateOrigin.isBlank()) citation.put("coordinateOrigin", coordinateOrigin);
 		if (!pageWidth.isBlank()) citation.put("pageWidth", pageWidth);
 		if (!pageHeight.isBlank()) citation.put("pageHeight", pageHeight);
-		StringBuilder url = new StringBuilder("/api/agent-knowledge/%d/review/source#page=%d"
+		StringBuilder url = new StringBuilder("/data-agent-management/api/agent-knowledge/%d/review/source#page=%d"
 			.formatted(knowledge.id(), pageNumber));
 		appendFragment(url, "bbox", boundingBox);
 		appendFragment(url, "origin", coordinateOrigin);

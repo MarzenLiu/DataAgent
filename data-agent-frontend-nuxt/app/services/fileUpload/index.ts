@@ -30,6 +30,14 @@ interface UploadResponse {
   url?: string;
 }
 
+function withManagementServicePrefix(response: UploadResponse): UploadResponse {
+  if (!response.url?.startsWith('/uploads/')) return response;
+  return {
+    ...response,
+    url: `/data-agent-management${response.url}`,
+  };
+}
+
 /**
  * @description 文件上传 API 封装对象
  */
@@ -43,7 +51,7 @@ export const fileUploadApi = {
     const formData = new FormData();
     formData.append('file', file);
 
-    const url = '/api/upload/avatar';
+    const url = '/data-agent-management/api/upload/avatar';
     return fetch(url, {
       method: 'POST',
       body: formData,
@@ -54,10 +62,10 @@ export const fileUploadApi = {
       }
       const ct = response.headers.get('content-type') || '';
       if (ct.includes('application/json')) {
-        return await response.json();
+        return withManagementServicePrefix(await response.json());
       }
       const text = await response.text();
-      return { success: true, message: 'ok', url: text };
+      return withManagementServicePrefix({ success: true, message: 'ok', url: text });
     });
   },
 };

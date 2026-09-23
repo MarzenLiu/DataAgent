@@ -110,7 +110,7 @@ export interface CreateLogicalRelationDTO {
   description?: string;
 }
 
-const API_BASE_URL = '/api/datasource';
+const API_BASE_URL = '/data-agent-management/api/datasource';
 
 /**
  * @description 数据源业务逻辑处理类
