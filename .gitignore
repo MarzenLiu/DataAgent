@@ -63,6 +63,8 @@ uploads/*
 /vectorstore/
 /data-agent-management/vectorstore/
 /output/backups/
+/output/
+/test-data/
 /.agentscope/
 .java-version
 
